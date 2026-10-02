@@ -1,0 +1,22 @@
+{
+  "name": "editor-context",
+  "version": "1.1.0",
+  "description": "Shows the file and lines you have selected in Cursor or VS Code above the Claude Code prompt, and quietly tells Claude what you're looking at with each message",
+  "author": {
+    "name": "Tal Barina",
+    "url": "https://github.com/talbarina"
+  },
+  "homepage": "https://github.com/talbarina/claude-editor-context",
+  "repository": "https://github.com/talbarina/claude-editor-context",
+  "license": "MIT",
+  "keywords": [
+    "mod",
+    "ide",
+    "cursor",
+    "vscode",
+    "selection",
+    "context",
+    "editor"
+  ],
+  "types": "./types/index.d.ts"
+}

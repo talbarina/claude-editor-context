@@ -1,0 +1,15 @@
+{
+  "name": "talbarina",
+  "description": "Claude Code plugins by Tal Barina",
+  "owner": {
+    "name": "Tal Barina",
+    "url": "https://github.com/talbarina"
+  },
+  "plugins": [
+    {
+      "name": "editor-context",
+      "source": "./plugins/editor-context",
+      "description": "See your Cursor / VS Code file and selection above the prompt; Claude gets it with every message"
+    }
+  ]
+}
