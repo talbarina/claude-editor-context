@@ -7,7 +7,7 @@ const selection = atom({ plugin: 'editor-context', key: 'selection' } as const, 
 const ide = atom({ plugin: 'editor-context', key: 'ide' } as const, null)
 const isPaused = atom({ plugin: 'editor-context', key: 'isPaused' } as const, false)
 const isDirty = atom({ plugin: 'editor-context', key: 'isDirty' } as const, false)
-const pinned = atom({ plugin: 'editor-context', key: 'pinned' } as const, null)
+const pins = atom({ plugin: 'editor-context', key: 'pins' } as const, [])
 const recent = atom({ plugin: 'editor-context', key: 'recent' } as const, [])
 const isRecentHidden = atom({ plugin: 'editor-context', key: 'isRecentHidden' } as const, true)
 const isDemo = atom({ plugin: 'editor-context', key: 'isDemo' } as const, false)
@@ -16,6 +16,7 @@ const isNoticeHidden = atom({ plugin: 'editor-context', key: 'isNoticeHidden' } 
 
 const MAX_TEXT = 20000
 const MAX_RECENT = 5
+const MAX_PINS = 10
 const DOT_COLOR = '#D97757'
 const WARN_COLOR = '#E5A50A'
 const DOT_SIZE = 8
@@ -295,6 +296,10 @@ function lineLabel(s: EditorSelection) {
   return `${rangeLabel(s)} · ${count} ${count === 1 ? 'line' : 'lines'} selected`
 }
 
+function pinKey(p: EditorSelection) {
+  return `${p.filePath}|${p.startLine}|${p.endLine}`
+}
+
 function codeBlock(text: string) {
   return '```\n' + text + '\n```'
 }
@@ -492,11 +497,17 @@ export const register: Register = on => {
     }
     blocks.push(main)
 
-    const pin = await read($, pinned)
-    if (pin) {
-      blocks.push(isFresh('pinned', `${pin.filePath}|${pin.startLine}|${pin.endLine}|${pin.text}`)
-        ? `The user pinned lines ${pin.startLine}-${pin.endLine} of ${pin.filePath} as reference for this conversation:\n${codeBlock(pin.text)}`
-        : `The user still has lines ${pin.startLine}-${pin.endLine} of ${pin.filePath} pinned (unchanged since it was sent).`)
+    // Each pin's code goes once; while unchanged, one line names them all.
+    const unchanged: string[] = []
+    for (const pin of await read($, pins)) {
+      if (isFresh(`pin:${pinKey(pin)}`, pin.text)) {
+        blocks.push(`The user pinned lines ${pin.startLine}-${pin.endLine} of ${pin.filePath} as reference for this conversation:\n${codeBlock(pin.text)}`)
+      } else {
+        unchanged.push(`lines ${pin.startLine}-${pin.endLine} of ${pin.filePath}`)
+      }
+    }
+    if (unchanged.length > 0) {
+      blocks.push(`Still pinned, unchanged since they were sent: ${unchanged.join('; ')}.`)
     }
 
     const files = await read($, recent)
@@ -538,12 +549,16 @@ export const register: Register = on => {
       : live
     const paused = await read($, isPaused)
     const dirty = demo || (await read($, isDirty))
-    const pin: EditorSelection | null = demo
-      ? { ide: 'Cursor', filePath: '/demo/src/hooks/useCart.ts', startLine: 36, endLine: 48, isEmpty: false, text: 'demo' }
-      : await read($, pinned)
+    const pinList: EditorSelection[] = demo
+      ? [
+          { ide: 'Cursor', filePath: '/demo/src/hooks/useCart.ts', startLine: 36, endLine: 48, isEmpty: false, text: 'demo' },
+          { ide: 'Cursor', filePath: '/demo/src/api/client.ts', startLine: 3, endLine: 13, isEmpty: false, text: 'demo' },
+        ]
+      : await read($, pins)
     const files = demo ? DEMO_RECENT : await read($, recent)
     const showRecent = files.length > 0 && (demo || !(await read($, isRecentHidden)))
     const hasSelection = Boolean(s && !s.isEmpty && s.text)
+    const canPin = hasSelection && pinList.length < MAX_PINS && !pinList.some(p => s && pinKey(p) === pinKey(s))
     const elements = $.ui.resolve(e)
     const { Box, Button, Text } = elements
     const hasSvg = 'Svg' in elements
@@ -593,7 +608,7 @@ export const register: Register = on => {
           <Box flexDirection="row" alignItems="center" columnGap={2} flexShrink={0}>
             {dirty && s ? action('save', 'save', 'Save', () => !demo && ideCall($, 'saveDocument', { filePath: s.filePath })) : null}
             {s ? action('explain', 'explain', 'Explain', explain) : null}
-            {hasSelection ? action('pin', 'pin', 'Pin', () => !demo && update($, pinned, () => s)) : null}
+            {canPin && s ? action('pin', 'pin', 'Pin', () => !demo && update($, pins, list => [...list, s])) : null}
             {files.length > 0 && !showRecent
               ? action('show-recent', 'recent', 'Recent', () => update($, isRecentHidden, () => false))
               : null}
@@ -602,19 +617,28 @@ export const register: Register = on => {
               : action('pause', 'pause', 'Pause', () => update($, isPaused, () => true))}
           </Box>
         </Box>
-        {pin ? (
-          <Box flexDirection="row" alignItems="center" width="100%" columnGap={2} marginTop={1}>
-            <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1}>
-              <Box flexDirection="row" alignItems="center" columnGap={1}>
-                {icon('pin')}
-                <Text dimColor>Pinned</Text>
+        {pinList.length > 0 ? (
+          <Box flexDirection="column" width="100%" marginTop={1}>
+            {pinList.map(pin => (
+              <Box key={`pin:${pinKey(pin)}`} flexDirection="row" alignItems="center" width="100%" columnGap={2}>
+                <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1}>
+                  <Box flexDirection="row" alignItems="center" columnGap={1}>
+                    {icon('pin')}
+                    <Text>{fileName(pin.filePath)}</Text>
+                  </Box>
+                  <Text dimColor>{`${rangeLabel(pin)} \u00b7 ${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
+                </Box>
+                <Box flexShrink={0}>
+                  {action(`unpin:${pinKey(pin)}`, 'unpin', 'Unpin', () =>
+                    !demo && update($, pins, list => list.filter(p => pinKey(p) !== pinKey(pin))))}
+                </Box>
               </Box>
-              <Text>{fileName(pin.filePath)}</Text>
-              <Text dimColor>{`${rangeLabel(pin)} \u00b7 ${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
-            </Box>
-            <Box flexShrink={0}>
-              {action('unpin', 'unpin', 'Unpin', () => !demo && update($, pinned, () => null))}
-            </Box>
+            ))}
+            {pinList.length > 1 ? (
+              <Box flexDirection="row" justifyContent="flex-end" width="100%">
+                <Button key="unpin-all" plain dimColor label="Unpin all" onPress={() => { if (!demo) void update($, pins, () => []) }} />
+              </Box>
+            ) : null}
           </Box>
         ) : null}
         {showRecent ? (

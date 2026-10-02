@@ -14,7 +14,7 @@ declare module 'claude-code' {
       ide: string | null
       isPaused: boolean
       isDirty: boolean
-      pinned: EditorSelection | null
+      pins: EditorSelection[]
       recent: string[]
       isRecentHidden: boolean
       isDemo: boolean

@@ -6,7 +6,7 @@
 
 A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.2.1-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.3.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
@@ -17,6 +17,7 @@ A mod for the Claude desktop app that shows your current Cursor or VS Code file 
 ```
 ● CheckoutForm.tsx  L12–30 · 19 lines selected     Explain  Pin  Pause
   Pinned  useCart.ts  L36–48 · 13 lines                         Unpin
+          client.ts   L3–13 · 11 lines                          Unpin
   Recent  Header.tsx  client.ts  Settings.tsx                   Close
 ```
 
@@ -28,28 +29,28 @@ With this mod, you just select the code and ask: "why does this fail?" or "expla
 
 ## Features
 
-<img src="assets/icons/eye.svg" width="18" height="18" align="top" alt=""> &nbsp;**Live file and selection**<br>
+👀 **Live file and selection**<br>
 The band shows the file, the line range and how many lines are selected. It updates as you click around.
 
-<img src="assets/icons/message.svg" width="18" height="18" align="top" alt=""> &nbsp;**Sent with every message**<br>
+💬 **Sent with every message**<br>
 Claude gets the file path and the selected code. It stays out of your chat.
 
-<img src="assets/icons/bulb.svg" width="18" height="18" align="top" alt=""> &nbsp;**Explain**<br>
+💡 **Explain**<br>
 One click asks Claude to explain the selection, or the whole file.
 
-<img src="assets/icons/pin.svg" width="18" height="18" align="top" alt=""> &nbsp;**Pin**<br>
-Keep a selection attached to every message, even after you move to other files.
+📌 **Pin**<br>
+Pin as many selections as you like, from any files. They're attached to every message until you unpin them.
 
-<img src="assets/icons/save.svg" width="18" height="18" align="top" alt=""> &nbsp;**Unsaved warning**<br>
+💾 **Unsaved warning**<br>
 Tells you (and Claude) when the file has unsaved changes, with a Save button.
 
-<img src="assets/icons/history.svg" width="18" height="18" align="top" alt=""> &nbsp;**Recent files**<br>
+🕘 **Recent files**<br>
 Your last five files, one click to reopen. Hidden until you press Recent.
 
-<img src="assets/icons/pause.svg" width="18" height="18" align="top" alt=""> &nbsp;**Pause**<br>
+⏸️ **Pause**<br>
 Stop sharing until you press Resume.
 
-<img src="assets/icons/plug-off.svg" width="18" height="18" align="top" alt=""> &nbsp;**Connection notices**<br>
+🔌 **Connection notices**<br>
 Says when no editor is open or the connection drops.
 
 ## Quick start
@@ -99,7 +100,7 @@ selected in Cursor. "This", "here" or "these lines" likely refers to it:
 
 If the selection hasn't changed since your last message, Claude gets a one-line reminder instead of the code again.
 
-## <img src="assets/icons/lock.svg" width="22" height="22" align="top" alt=""> Privacy
+## 🔒 Privacy
 
 Everything stays on your machine. The mod reads your editor through the Claude Code extension's local connection and adds it only to messages you send. Press **Pause** whenever you want Claude not to see what's open.
 
@@ -157,7 +158,7 @@ claude plugin uninstall editor-context@talbarina    # remove
 
 ## Credits
 
-Icons by [Tabler Icons](https://tabler.io/icons) (MIT).
+Band icons by [Tabler Icons](https://tabler.io/icons) (MIT).
 
 ## License
 
