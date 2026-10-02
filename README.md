@@ -10,7 +10,7 @@ It shows your active file and selected lines in a band above the Claude Code pro
    Recent   Header.tsx   client.ts   Settings.tsx                                                 [Close]
 ```
 
-Works in the Claude Code terminal app and in the Code tab of the Claude desktop app.
+Built for the **Code tab of the Claude desktop app**. In the terminal, Claude Code already gets your editor selection through `/ide`, so the mod stays off there.
 
 ## Features
 
@@ -23,10 +23,11 @@ Works in the Claude Code terminal app and in the Code tab of the Claude desktop 
 | **Unsaved warning** | Flags a file with unsaved changes (so Claude knows the file on disk may differ from what you see), with a Save button that saves it in your editor. |
 | **Recent files** | Hidden by default. Press Recent to show the last five files you visited; click one to open it in your editor. While shown, Claude also gets the list. |
 | **Pause** | Stops sending anything to Claude until you press Resume. The band stays visible. |
+| **Connection notices** | When no editor is open, the connection drops, or Node.js is missing, the band says so. Close hides the notice until something changes. |
 
 ## Requirements
 
-- **Claude Code v2.1.287 or later** (terminal or desktop app). Check with `claude --version`.
+- **The Claude desktop app** with Claude Code v2.1.287 or later.
 - **The Claude Code extension in VS Code or Cursor** (by Anthropic, id `anthropic.claude-code`). This mod reads your editor state through it, so it must be installed and the editor open. See [Set up your editor](#set-up-your-editor).
 - **Node.js 22 or later** on your machine. The mod finds it on your `PATH`, in Homebrew's folders, or through your login shell (nvm, fnm, volta).
 - **macOS or Linux.**
@@ -63,7 +64,7 @@ claude plugin marketplace add talbarina/claude-editor-context
 claude plugin install editor-context@talbarina
 ```
 
-It's installed for your user, so it loads in every new Claude Code session, in any project. Run `/reload-plugins` to load it into a session that's already open.
+It's installed for your user, so it loads in every new desktop session, in any project. Run `/reload-plugins` to load it into a session that's already open.
 
 ## Using it
 
@@ -111,13 +112,15 @@ claude plugin validate claude-editor-context/plugins/editor-context
 
 **The band isn't there on the desktop app's new-session screen.** That screen is the app's own, before any Claude Code session exists, so no mod can draw there. The band appears as soon as the session starts, and your first message still carries your editor context: the mod waits up to 4 seconds for it while starting up.
 
+**There's no band in a terminal session.** That's by design: terminal sessions get your editor selection from Claude Code's own `/ide`, and the editor accepts one connection at a time, so the mod stays out of the way there.
+
 **The band doesn't appear.**
 - Make sure the editor is open, with the Claude Code extension installed. `ls ~/.claude/ide` should list a `.lock` file.
 - Run `/plugin` and check that `editor-context` is listed as an active mod.
 
 **"needs Node.js 22 or later" appears in the transcript.** Install Node 22+, then start a new session.
 
-**The band flickers or drops out while a terminal session uses `/ide`.** The editor accepts one client at a time, so a terminal `claude` session connected to the same editor competes with this mod. The mod backs off and keeps the band up through short gaps, but for a steady band, avoid running `/ide` against the same editor window.
+**"Lost connection" shows while a terminal session uses `/ide`.** The editor accepts one client at a time, so a terminal `claude` session connected to the same editor competes with the desktop app's band. The mod backs off and reconnects when the editor is free.
 
 **It follows the wrong editor window.** It prefers the window whose workspace contains your session's folder. Start Claude Code from inside the project, or close the other window.
 

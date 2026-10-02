@@ -11,6 +11,8 @@ const pinned = atom({ plugin: 'editor-context', key: 'pinned' } as const, null)
 const recent = atom({ plugin: 'editor-context', key: 'recent' } as const, [])
 const isRecentHidden = atom({ plugin: 'editor-context', key: 'isRecentHidden' } as const, true)
 const isDemo = atom({ plugin: 'editor-context', key: 'isDemo' } as const, false)
+const notice = atom({ plugin: 'editor-context', key: 'notice' } as const, null)
+const isNoticeHidden = atom({ plugin: 'editor-context', key: 'isNoticeHidden' } as const, false)
 
 const MAX_TEXT = 20000
 const MAX_RECENT = 5
@@ -233,7 +235,7 @@ async function serve(sock, lock) {
         delay = openedAt && Date.now() - openedAt > 10000 ? 3000 : Math.min(delay * 2, 30000)
         openedAt = 0
         clearTimeout(goneTimer)
-        goneTimer = setTimeout(() => broadcast({ type: 'status', ide: null }), 8000)
+        goneTimer = setTimeout(() => broadcast({ type: 'status', ide: null, reason: 'disconnected', ideName: lock.ideName }), 8000)
         setTimeout(connect, delay)
       }
       ws.onerror = () => {}
@@ -245,7 +247,7 @@ async function serve(sock, lock) {
 async function main() {
   for (;;) {
     const lock = pickLock()
-    if (!lock) { out({ type: 'status', ide: null }); await sleep(5000); continue }
+    if (!lock) { out({ type: 'status', ide: null, reason: 'no-editor' }); await sleep(5000); continue }
     const sock = path.join(os.tmpdir(), 'editor-context-' + lock.port + '.sock')
     if (await subscribe(sock)) { await sleep(200 + Math.random() * 800); continue }
     await serve(sock, lock)
@@ -362,11 +364,77 @@ let settleStart: () => void = () => {}
 let started: Promise<void> = Promise.resolve()
 const START_WAIT_MS = 4000
 
-function beginStart() {
+// The mod runs in the desktop app only: the terminal CLI already gets the
+// editor's selection through /ide, and the editor accepts one client at a
+// time, so a second connection there would only compete with it.
+let isActive = false
+
+function isDesktop(surface: string | null | undefined) {
+  return surface === 'desktop'
+}
+
+async function showNotice($: any, next: { kind: string; ide?: string } | null) {
+  const current = await read($, notice)
+  if (current?.kind === next?.kind && current?.ide === next?.ide) return
+  await update($, notice, () => next)
+  await update($, isNoticeHidden, () => false)
+}
+
+async function handleLine($: any, msg: any) {
+  if (msg.type === 'ready') {
+    socketPath = msg.socket
+  } else if (msg.type === 'status') {
+    await update($, ide, () => msg.ide ?? null)
+    if (msg.ide) {
+      await showNotice($, null)
+    } else {
+      await update($, selection, () => null)
+      await showNotice($, { kind: msg.reason ?? 'no-editor', ide: msg.ideName })
+      settleStart()
+    }
+  } else if (msg.type === 'selection') {
+    const incoming = toSelection(msg)
+    const prev = await read($, selection)
+    if (prev && prev.filePath !== incoming.filePath) {
+      await update($, isDirty, () => false)
+      await update($, recent, list =>
+        [prev.filePath, ...list.filter(f => f !== prev.filePath && f !== incoming.filePath)].slice(0, MAX_RECENT))
+    }
+    await update($, selection, () => incoming)
+    settleStart()
+  } else if (msg.type === 'dirty') {
+    const s = await read($, selection)
+    if (s && s.filePath === msg.filePath) await update($, isDirty, () => Boolean(msg.isDirty))
+  }
+}
+
+async function startBridge($: any) {
+  if (isActive) return
+  isActive = true
   isStarting = true
   started = new Promise<void>(resolve => {
     settleStart = () => { isStarting = false; resolve() }
   })
+  const node = await findNode($)
+  if (!node) {
+    await showNotice($, { kind: 'no-node' })
+    settleStart()
+    return
+  }
+  let buffer = ''
+  const bridge = $.process.spawn({ argv: [node, '-e', BRIDGE, await $.session.cwd()] })
+  for await (const piece of bridge) {
+    if (piece.stream !== 'stdout') continue
+    buffer += piece.text
+    let nl
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl)
+      buffer = buffer.slice(nl + 1)
+      let msg: any
+      try { msg = JSON.parse(line) } catch { continue }
+      await handleLine($, msg)
+    }
+  }
 }
 
 export const register: Register = on => {
@@ -385,59 +453,25 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
-    const started = await next(e)
+    const result = await next(e)
     await $.command.register({
       name: 'editor-context-demo',
       description: 'Toggle sample data in the editor band to preview every row',
     })
-    beginStart()
-    void (async () => {
-      const node = await findNode($)
-      if (!node) {
-        settleStart()
-        $.ui.log(`editor-context: needs Node.js ${MIN_NODE_MAJOR} or later on this machine to reach your editor; none was found`)
-        return
-      }
-      let buffer = ''
-      const bridge = $.process.spawn({ argv: [node, '-e', BRIDGE, e.cwd] })
-      for await (const piece of bridge) {
-        if (piece.stream !== 'stdout') continue
-        buffer += piece.text
-        let nl
-        while ((nl = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, nl)
-          buffer = buffer.slice(nl + 1)
-          let msg: any
-          try { msg = JSON.parse(line) } catch { continue }
-          if (msg.type === 'ready') {
-            socketPath = msg.socket
-          } else if (msg.type === 'status') {
-            await update($, ide, () => msg.ide ?? null)
-            if (!msg.ide) {
-              await update($, selection, () => null)
-              settleStart()
-            }
-          } else if (msg.type === 'selection') {
-            const incoming = toSelection(msg)
-            const prev = await read($, selection)
-            if (prev && prev.filePath !== incoming.filePath) {
-              await update($, isDirty, () => false)
-              await update($, recent, list =>
-                [prev.filePath, ...list.filter(f => f !== prev.filePath && f !== incoming.filePath)].slice(0, MAX_RECENT))
-            }
-            await update($, selection, () => incoming)
-            settleStart()
-          } else if (msg.type === 'dirty') {
-            const s = await read($, selection)
-            if (s && s.filePath === msg.filePath) await update($, isDirty, () => Boolean(msg.isDirty))
-          }
-        }
-      }
-    })()
-    return started
+    // The app's sessions start with no surface of their own and list it here.
+    if (isDesktop(e.surface) || (await $.session.surfaces()).some(isDesktop)) void startBridge($)
+    return result
+  })
+
+  // A desktop session may start without a surface and attach the app after.
+  on('session.attach', async ($, e, next) => {
+    if (isDesktop(e.surface)) void startBridge($)
+    return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (!isActive && (await $.session.surfaces()).some(isDesktop)) void startBridge($)
+    if (!isActive) return next(e)
     if (isStarting) await Promise.race([started, $.clock.sleep(START_WAIT_MS)])
     const s = await read($, selection)
     const origin = e.origin as { kind: string; name?: string }
@@ -474,9 +508,30 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!isDesktop(e.surface) || e.props.hasSurvey) return next(e)
+    if (!isActive) void startBridge($)
     const demo = await read($, isDemo)
     const live = await read($, selection)
-    if (e.props.hasSurvey || (!demo && !(await read($, ide)))) return next(e)
+    if (!demo && !(await read($, ide))) {
+      const n = await read($, notice)
+      if (!n || (await read($, isNoticeHidden))) return next(e)
+      const { Box, Button, Text } = $.ui.resolve(e)
+      const message =
+        n.kind === 'no-node' ? `Editor context needs Node.js ${MIN_NODE_MAJOR} or later on this machine.`
+        : n.kind === 'disconnected' ? `Lost connection to ${n.ide ?? 'your editor'}. Reconnecting\u2026`
+        : 'No editor connected. Open VS Code or Cursor with the Claude Code extension installed.'
+      return (
+        <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexGrow={1} flexShrink={1}>
+            <Text color={WARN_COLOR}>{'\u25cb'}</Text>
+            <Text dimColor>{message}</Text>
+          </Box>
+          <Box flexShrink={0}>
+            <Button key="close-notice" label="Close" onPress={() => update($, isNoticeHidden, () => true)} />
+          </Box>
+        </Box>
+      )
+    }
 
     const s: EditorSelection | null = demo
       ? { ide: 'Cursor', filePath: live?.filePath ?? '/demo/src/components/CheckoutForm.tsx', startLine: 12, endLine: 30, isEmpty: false, text: 'demo' }

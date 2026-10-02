@@ -18,6 +18,8 @@ declare module 'claude-code' {
       recent: string[]
       isRecentHidden: boolean
       isDemo: boolean
+      notice: { kind: string; ide?: string } | null
+      isNoticeHidden: boolean
     }
   }
 }
