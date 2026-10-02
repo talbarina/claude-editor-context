@@ -534,7 +534,7 @@ export const register: Register = on => {
     }
 
     const s: EditorSelection | null = demo
-      ? { ide: 'Cursor', filePath: live?.filePath ?? '/demo/src/components/CheckoutForm.tsx', startLine: 12, endLine: 30, isEmpty: false, text: 'demo' }
+      ? { ide: 'Cursor', filePath: '/demo/src/components/CheckoutForm.tsx', startLine: 12, endLine: 30, isEmpty: false, text: 'demo' }
       : live
     const paused = await read($, isPaused)
     const dirty = demo || (await read($, isDirty))
