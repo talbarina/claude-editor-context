@@ -1,139 +1,150 @@
+<div align="center">
+
 # editor-context
 
-A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that keeps Claude aware of what you're looking at in **Cursor** or **VS Code**.
+**Claude always knows what you're looking at in your editor.**
 
-It shows your active file and selected lines in a band above the Claude Code prompt, and quietly attaches them to every message you send. "Explain this", "why does this line fail?" and "refactor these" just work, without pasting code or file paths.
+A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection above the prompt, and quietly sends it to Claude with every message.
+
+[![Version](https://img.shields.io/badge/version-1.2.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
+[![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
+
+</div>
+
+<!-- Demo GIF goes here -->
 
 ```
-●  CheckoutForm.tsx   L12–30 · 19 lines selected   unsaved         [Save] [Explain] [Pin] [Recent] [Pause]
-   Pinned   useCart.ts   L36–48 · 13 lines                                                        [Unpin]
-   Recent   Header.tsx   client.ts   Settings.tsx                                                 [Close]
+●  CheckoutForm.tsx   L12–30 · 19 lines selected   unsaved     Save   Explain   Pin   Recent   Pause
+   Pinned   useCart.ts   L36–48 · 13 lines                                                    Unpin
+   Recent   Header.tsx   client.ts   Settings.tsx                                             Close
 ```
 
-Built for the **Code tab of the Claude desktop app**. In the terminal, Claude Code already gets your editor selection through `/ide`, so the mod stays off there.
+## Why
+
+In the terminal, Claude Code already sees your editor selection through `/ide`. The desktop app doesn't. So you end up pasting code and file paths into every message.
+
+With this mod, you just select the code and ask: "why does this fail?" or "explain this".
 
 ## Features
 
-| | |
-|---|---|
-| **Live file and selection** | The band shows the file name, the cursor line or the selected range, and how many lines are selected. It updates as you click around in your editor. |
-| **Automatic context** | Each message you send carries the file's full path, the cursor line and the selected code. It's hidden from your chat; only Claude sees it. |
-| **Explain** | One click asks Claude to explain the selection, or the whole file when nothing is selected. |
-| **Pin** | Select lines and press Pin to keep them attached to every message, even after you move on to other files. |
-| **Unsaved warning** | Flags a file with unsaved changes (so Claude knows the file on disk may differ from what you see), with a Save button that saves it in your editor. |
-| **Recent files** | Hidden by default. Press Recent to show the last five files you visited; click one to open it in your editor. While shown, Claude also gets the list. |
-| **Pause** | Stops sending anything to Claude until you press Resume. The band stays visible. |
-| **Connection notices** | When no editor is open, the connection drops, or Node.js is missing, the band says so. Close hides the notice until something changes. |
+<table>
+<tr><td width="36"><img src="assets/icons/eye.svg" width="20" alt=""></td><td><b>Live file and selection</b><br>The band shows the file, the line range and how many lines are selected. It updates as you click around.</td></tr>
+<tr><td><img src="assets/icons/message.svg" width="20" alt=""></td><td><b>Sent with every message</b><br>Claude gets the file path and the selected code. It stays out of your chat.</td></tr>
+<tr><td><img src="assets/icons/bulb.svg" width="20" alt=""></td><td><b>Explain</b><br>One click asks Claude to explain the selection, or the whole file.</td></tr>
+<tr><td><img src="assets/icons/pin.svg" width="20" alt=""></td><td><b>Pin</b><br>Keep a selection attached to every message, even after you move to other files.</td></tr>
+<tr><td><img src="assets/icons/save.svg" width="20" alt=""></td><td><b>Unsaved warning</b><br>Tells you (and Claude) when the file has unsaved changes, with a Save button.</td></tr>
+<tr><td><img src="assets/icons/history.svg" width="20" alt=""></td><td><b>Recent files</b><br>Your last five files, one click to reopen. Hidden until you press Recent.</td></tr>
+<tr><td><img src="assets/icons/pause.svg" width="20" alt=""></td><td><b>Pause</b><br>Stop sharing until you press Resume.</td></tr>
+<tr><td><img src="assets/icons/plug-off.svg" width="20" alt=""></td><td><b>Connection notices</b><br>Says when no editor is open or the connection drops.</td></tr>
+</table>
 
-## Requirements
+## Quick start
 
-- **The Claude desktop app** with Claude Code v2.1.287 or later.
-- **The Claude Code extension in VS Code or Cursor** (by Anthropic, id `anthropic.claude-code`). This mod reads your editor state through it, so it must be installed and the editor open. See [Set up your editor](#set-up-your-editor).
-- **Node.js 22 or later** on your machine. The mod finds it on your `PATH`, in Homebrew's folders, or through your login shell (nvm, fnm, volta).
-- **macOS or Linux.**
+**1. Install the Claude Code extension in your editor.**
+Search for **Claude Code** by Anthropic in the Extensions view, or run:
 
-## Set up your editor
+```bash
+cursor --install-extension anthropic.claude-code   # Cursor
+code --install-extension anthropic.claude-code     # VS Code
+```
 
-This mod gets your open file and selection from the **Claude Code extension** for VS Code and Cursor. If you already use Claude Code inside your editor, you likely have it. Pick one way to install it:
-
-- **From the editor:** open the Extensions view (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Linux), search for **Claude Code**, and install the one published by **Anthropic**. Cursor lists it too.
-- **From your shell:**
-  ```bash
-  code --install-extension anthropic.claude-code     # VS Code
-  cursor --install-extension anthropic.claude-code   # Cursor
-  ```
-- **Automatically:** run `claude` once in the editor's integrated terminal, and Claude Code installs the extension for you.
-
-To check that it's running, open a project in the editor and run `ls ~/.claude/ide`. You should see a `.lock` file. The extension creates it while the editor is open, and that's what this mod connects to.
-
-You don't need to use the extension's own Claude panel. It only has to be installed, with the editor open.
-
-## Install
-
-In a Claude Code session:
+**2. Install the mod.** In a Claude Code session:
 
 ```
 /plugin marketplace add talbarina/claude-editor-context
 /plugin install editor-context@talbarina
 ```
 
-Or from your shell:
+**3. Start a session** in the desktop app, in the same folder you have open in your editor. Send your first message and the band appears.
 
-```bash
-claude plugin marketplace add talbarina/claude-editor-context
-claude plugin install editor-context@talbarina
+To preview every part of the band with sample data, run `/editor-context-demo`.
+
+## Requirements
+
+- The Claude desktop app, with Claude Code v2.1.287 or later
+- VS Code or Cursor, open, with the Claude Code extension
+- Node.js 22 or later
+- macOS or Linux
+
+## Good to know
+
+- **No band on the new-session screen.** That screen comes before the session exists, so no mod can draw there. The band appears once the session starts, and your first message still includes your editor context.
+- **Desktop app only.** In terminal sessions the mod stays off, because `/ide` already does this there.
+- **One editor connection.** Your editor accepts one connection at a time. All your desktop sessions share it, but a terminal session using `/ide` on the same editor will take turns with them.
+- **Long selections are cut** at 20,000 characters.
+
+## What Claude sees
+
+Nothing shows in your chat. Claude gets a short note with each message:
+
 ```
-
-It's installed for your user, so it loads in every new desktop session, in any project. Run `/reload-plugins` to load it into a session that's already open.
-
-## Using it
-
-Open a file in your editor and the band appears above the prompt once a session is running. The orange dot means your file and selection are being shared with Claude; a grey ring means sharing is paused.
-
-To see every row of the band at once with sample data, run `/editor-context-demo`. Run it again to switch back. Sample data is never sent to Claude.
-
-### What Claude receives
-
-Nothing appears in your chat. With each message, Claude also gets a short note like this:
-
-```
-The user has lines 12-30 of /path/to/project/src/components/CheckoutForm.tsx selected in Cursor.
-"This", "here" or "these lines" likely refers to it:
+The user has lines 12-30 of /path/to/project/src/components/CheckoutForm.tsx
+selected in Cursor. "This", "here" or "these lines" likely refers to it:
 <the selected code>
 ```
 
-To save tokens, an unchanged selection, pin or recent-files list is referred to, not sent again. Selections longer than 20,000 characters are cut off.
+If the selection hasn't changed since your last message, Claude gets a one-line reminder instead of the code again.
 
-## Privacy
+## <img src="assets/icons/lock.svg" width="20" alt=""> Privacy
 
-Everything stays on your machine. The mod reads your editor state from the Claude Code extension's local connection and adds it only to the messages you send to Claude. Nothing else is sent anywhere. Press **Pause** whenever you don't want Claude to see what's open.
+Everything stays on your machine. The mod reads your editor through the Claude Code extension's local connection and adds it only to messages you send. Press **Pause** whenever you want Claude not to see what's open.
+
+## Troubleshooting
+
+<details>
+<summary><b>The band doesn't appear</b></summary>
+
+- Check that the editor is open and the extension is installed: `ls ~/.claude/ide` should list a `.lock` file.
+- Run `/plugin` and check that `editor-context` is listed as active.
+- Make sure you're in the desktop app, not the terminal.
+</details>
+
+<details>
+<summary><b>It says "Lost connection"</b></summary>
+
+Another client took the editor's connection, usually a terminal session running `/ide`. The mod reconnects when the editor is free.
+</details>
+
+<details>
+<summary><b>It says it needs Node.js</b></summary>
+
+Install Node.js 22 or later, then start a new session.
+</details>
+
+<details>
+<summary><b>It follows the wrong editor window</b></summary>
+
+It picks the window that has your session's folder open. Start the session in that folder, or close the other window.
+</details>
 
 ## How it works
 
-The Claude Code extension in VS Code and Cursor runs a local server and writes its port to `~/.claude/ide/<port>.lock`. That's the same server the `claude` CLI uses for `/ide`.
+<details>
+<summary>Details</summary>
 
-On session start, the mod starts a small Node helper that:
+The Claude Code extension runs a small local server in your editor and records its port in `~/.claude/ide/`. When a desktop session starts, the mod launches a Node helper that connects to that server, listens for selection changes, and checks for unsaved changes every 1.5 seconds.
 
-1. picks the editor whose workspace contains your session's folder, or else the most recently opened one;
-2. connects to that editor's server and listens for selection changes;
-3. checks every 1.5 seconds whether the file has unsaved changes;
-4. serves a Unix socket so the band's buttons can save and open files in the editor.
+The editor accepts one client at a time, so the first session's helper holds the connection and the other sessions listen to it over a local socket. When that session closes, another takes over.
 
-The editor's server accepts only one client at a time, so all your Claude Code sessions share a single connection per editor window. The first session's helper holds it and the others subscribe to it. When that session closes, another one takes over within a second. The helper reconnects on its own when the editor restarts, and quits with its session.
-
-You can review exactly which events the mod handles and which Claude Code APIs it calls before installing:
+To see exactly which events the mod handles and what it calls before you install it:
 
 ```bash
 git clone https://github.com/talbarina/claude-editor-context
 claude plugin validate claude-editor-context/plugins/editor-context
 ```
-
-## Troubleshooting
-
-**The band isn't there on the desktop app's new-session screen.** That screen is the app's own, before any Claude Code session exists, so no mod can draw there. The band appears as soon as the session starts, and your first message still carries your editor context: the mod waits up to 4 seconds for it while starting up.
-
-**There's no band in a terminal session.** That's by design: terminal sessions get your editor selection from Claude Code's own `/ide`, and the editor accepts one connection at a time, so the mod stays out of the way there.
-
-**The band doesn't appear.**
-- Make sure the editor is open, with the Claude Code extension installed. `ls ~/.claude/ide` should list a `.lock` file.
-- Run `/plugin` and check that `editor-context` is listed as an active mod.
-
-**"needs Node.js 22 or later" appears in the transcript.** Install Node 22+, then start a new session.
-
-**"Lost connection" shows while a terminal session uses `/ide`.** The editor accepts one client at a time, so a terminal `claude` session connected to the same editor competes with the desktop app's band. The mod backs off and reconnects when the editor is free.
-
-**It follows the wrong editor window.** It prefers the window whose workspace contains your session's folder. Start Claude Code from inside the project, or close the other window.
+</details>
 
 ## Update or remove
 
 ```bash
-claude plugin marketplace update talbarina
-claude plugin uninstall editor-context@talbarina
+claude plugin marketplace update talbarina          # update
+claude plugin uninstall editor-context@talbarina    # remove
 ```
 
 ## Credits
 
-Icons from [Tabler Icons](https://tabler.io/icons) (MIT).
+Icons by [Tabler Icons](https://tabler.io/icons) (MIT).
 
 ## License
 
