@@ -12,7 +12,7 @@ A mod for the Claude desktop app that shows your current Cursor or VS Code file 
 
 </div>
 
-<!-- Demo GIF goes here -->
+<p align="center"><img src="assets/demo.gif" alt="editor-context: pin selections from several files, ask Claude about them, reopen recent files" width="800"></p>
 
 ```
 ● CheckoutForm.tsx  L12–30 · 19 lines selected     Explain  Pin  Pause
