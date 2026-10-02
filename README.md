@@ -15,9 +15,9 @@ A mod for the Claude desktop app that shows your current Cursor or VS Code file 
 <!-- Demo GIF goes here -->
 
 ```
-●  CheckoutForm.tsx   L12–30 · 19 lines selected   unsaved     Save   Explain   Pin   Recent   Pause
-   Pinned   useCart.ts   L36–48 · 13 lines                                                    Unpin
-   Recent   Header.tsx   client.ts   Settings.tsx                                             Close
+● CheckoutForm.tsx  L12–30 · 19 lines selected     Explain  Pin  Pause
+  Pinned  useCart.ts  L36–48 · 13 lines                         Unpin
+  Recent  Header.tsx  client.ts  Settings.tsx                   Close
 ```
 
 ## Why
@@ -28,16 +28,29 @@ With this mod, you just select the code and ask: "why does this fail?" or "expla
 
 ## Features
 
-<table>
-<tr><td width="36"><img src="assets/icons/eye.svg" width="20" alt=""></td><td><b>Live file and selection</b><br>The band shows the file, the line range and how many lines are selected. It updates as you click around.</td></tr>
-<tr><td><img src="assets/icons/message.svg" width="20" alt=""></td><td><b>Sent with every message</b><br>Claude gets the file path and the selected code. It stays out of your chat.</td></tr>
-<tr><td><img src="assets/icons/bulb.svg" width="20" alt=""></td><td><b>Explain</b><br>One click asks Claude to explain the selection, or the whole file.</td></tr>
-<tr><td><img src="assets/icons/pin.svg" width="20" alt=""></td><td><b>Pin</b><br>Keep a selection attached to every message, even after you move to other files.</td></tr>
-<tr><td><img src="assets/icons/save.svg" width="20" alt=""></td><td><b>Unsaved warning</b><br>Tells you (and Claude) when the file has unsaved changes, with a Save button.</td></tr>
-<tr><td><img src="assets/icons/history.svg" width="20" alt=""></td><td><b>Recent files</b><br>Your last five files, one click to reopen. Hidden until you press Recent.</td></tr>
-<tr><td><img src="assets/icons/pause.svg" width="20" alt=""></td><td><b>Pause</b><br>Stop sharing until you press Resume.</td></tr>
-<tr><td><img src="assets/icons/plug-off.svg" width="20" alt=""></td><td><b>Connection notices</b><br>Says when no editor is open or the connection drops.</td></tr>
-</table>
+<img src="assets/icons/eye.svg" width="18" height="18" align="top" alt=""> &nbsp;**Live file and selection**<br>
+The band shows the file, the line range and how many lines are selected. It updates as you click around.
+
+<img src="assets/icons/message.svg" width="18" height="18" align="top" alt=""> &nbsp;**Sent with every message**<br>
+Claude gets the file path and the selected code. It stays out of your chat.
+
+<img src="assets/icons/bulb.svg" width="18" height="18" align="top" alt=""> &nbsp;**Explain**<br>
+One click asks Claude to explain the selection, or the whole file.
+
+<img src="assets/icons/pin.svg" width="18" height="18" align="top" alt=""> &nbsp;**Pin**<br>
+Keep a selection attached to every message, even after you move to other files.
+
+<img src="assets/icons/save.svg" width="18" height="18" align="top" alt=""> &nbsp;**Unsaved warning**<br>
+Tells you (and Claude) when the file has unsaved changes, with a Save button.
+
+<img src="assets/icons/history.svg" width="18" height="18" align="top" alt=""> &nbsp;**Recent files**<br>
+Your last five files, one click to reopen. Hidden until you press Recent.
+
+<img src="assets/icons/pause.svg" width="18" height="18" align="top" alt=""> &nbsp;**Pause**<br>
+Stop sharing until you press Resume.
+
+<img src="assets/icons/plug-off.svg" width="18" height="18" align="top" alt=""> &nbsp;**Connection notices**<br>
+Says when no editor is open or the connection drops.
 
 ## Quick start
 
@@ -86,7 +99,7 @@ selected in Cursor. "This", "here" or "these lines" likely refers to it:
 
 If the selection hasn't changed since your last message, Claude gets a one-line reminder instead of the code again.
 
-## <img src="assets/icons/lock.svg" width="20" alt=""> Privacy
+## <img src="assets/icons/lock.svg" width="22" height="22" align="top" alt=""> Privacy
 
 Everything stays on your machine. The mod reads your editor through the Claude Code extension's local connection and adds it only to messages you send. Press **Pause** whenever you want Claude not to see what's open.
 
