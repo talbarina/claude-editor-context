@@ -521,17 +521,29 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isDesktop(e.surface) || e.props.hasSurvey) return next(e)
     if (!isActive) void startBridge($)
+    // Other mods may draw in this band too: keep theirs, below ours.
+    const below = await next(e)
+    const stackBelow = (tree: any) => {
+      if (!below) return tree
+      const { Box } = $.ui.resolve(e)
+      return (
+        <Box flexDirection="column" width="100%" rowGap={1}>
+          {tree}
+          {below}
+        </Box>
+      )
+    }
     const demo = await read($, isDemo)
     const live = await read($, selection)
     if (!demo && !(await read($, ide))) {
       const n = await read($, notice)
-      if (!n || (await read($, isNoticeHidden))) return next(e)
+      if (!n || (await read($, isNoticeHidden))) return below
       const { Box, Button, Text } = $.ui.resolve(e)
       const message =
         n.kind === 'no-node' ? `Editor context needs Node.js ${MIN_NODE_MAJOR} or later on this machine.`
         : n.kind === 'disconnected' ? `Lost connection to ${n.ide ?? 'your editor'}. Reconnecting\u2026`
         : 'No editor connected. Open VS Code or Cursor with the Claude Code extension installed.'
-      return (
+      return stackBelow(
         <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
           <Box flexDirection="row" alignItems="center" columnGap={1} flexGrow={1} flexShrink={1}>
             <Text color={WARN_COLOR}>{'\u25cb'}</Text>
@@ -591,7 +603,7 @@ export const register: Register = on => {
       ? <elements.Svg source={dotSvg} alt={paused ? 'paused' : 'sharing'} width={DOT_SIZE} height={DOT_SIZE} />
       : <Text color={paused ? undefined : DOT_COLOR} dimColor={paused}>{paused ? '\u25cb' : '\u25cf'}</Text>
 
-    return (
+    return stackBelow(
       <Box flexDirection="column" width="100%">
         <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
           <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1}>
