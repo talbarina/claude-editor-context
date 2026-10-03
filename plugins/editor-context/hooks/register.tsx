@@ -13,6 +13,7 @@ const isRecentHidden = atom({ plugin: 'editor-context', key: 'isRecentHidden' } 
 const isDemo = atom({ plugin: 'editor-context', key: 'isDemo' } as const, false)
 const notice = atom({ plugin: 'editor-context', key: 'notice' } as const, null)
 const isNoticeHidden = atom({ plugin: 'editor-context', key: 'isNoticeHidden' } as const, false)
+const isExplaining = atom({ plugin: 'editor-context', key: 'isExplaining' } as const, false)
 
 const MAX_TEXT = 20000
 const MAX_RECENT = 5
@@ -22,6 +23,7 @@ const WARN_COLOR = '#E5A50A'
 const DOT_SIZE = 8
 const ICON_SIZE = 14
 const ICON_COLOR = '#8A8A8A'
+const BUSY_ICON_COLOR = '#5C5C5C'
 const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.2"/></svg>'
 
 // Tabler outline icons (tabler.io/icons, MIT), the set the desktop app ships.
@@ -444,16 +446,97 @@ async function startBridge($: any) {
   }
 }
 
-export const register: Register = on => {
-  // What each context block last sent, so an unchanged selection is not resent.
-  const lastSent = new Map<string, string>()
+// Explain stays busy until the turn its message started has completed.
+// `isNext`: nothing was running at the press, so the next turn is this one.
+const turnState = { isRunning: false }
+const explainTurn: { text: string; turnId: string | null; isNext: boolean } = { text: '', turnId: null, isNext: false }
 
-  function isFresh(key: string, value: string) {
-    const isSame = lastSent.get(key) === value
-    lastSent.set(key, value)
-    return !isSame
+async function sendExplain($: any, text: string) {
+  if (await read($, isExplaining)) return
+  await update($, isExplaining, () => true)
+  explainTurn.text = text
+  explainTurn.turnId = null
+  explainTurn.isNext = !turnState.isRunning
+  const result = await $.prompt.submit({ text, asUser: true })
+  if (result.drop) await endExplain($)
+}
+
+async function endExplain($: any) {
+  explainTurn.text = ''
+  explainTurn.turnId = null
+  explainTurn.isNext = false
+  await update($, isExplaining, () => false)
+}
+
+// What each context block last sent, so an unchanged selection is not resent.
+const lastSent = new Map<string, string>()
+
+function isFresh(key: string, value: string) {
+  const isSame = lastSent.get(key) === value
+  lastSent.set(key, value)
+  return !isSame
+}
+
+// ---- Band actions ----
+// Native buttons call runAction from onPress; the desktop's custom controls post a
+// press that the `ui.message` hook turns into the same call, by the Client's key.
+
+// Presses whose action has not finished yet: a second press of the same button is ignored.
+const inFlight = new Set<string>()
+
+async function runAction($: any, key: string) {
+  if (inFlight.has(key)) return
+  inFlight.add(key)
+  try {
+    await actionOf($, key)
+  } finally {
+    inFlight.delete(key)
   }
+}
 
+async function actionOf($: any, key: string) {
+  // The demo's rows are samples: only the band's own toggles act.
+  const demo = await read($, isDemo)
+  const s = await read($, selection)
+  switch (key) {
+    case 'close-notice':
+      await update($, isNoticeHidden, () => true)
+      return
+    case 'pause':
+      await update($, isPaused, v => !v)
+      return
+    case 'show-recent':
+      await update($, isRecentHidden, () => false)
+      return
+    case 'close-recent':
+      if (!demo) await update($, isRecentHidden, () => true)
+      return
+    case 'save':
+      if (!demo && s) await ideCall($, 'saveDocument', { filePath: s.filePath })
+      return
+    case 'pin':
+      if (!demo && s && !s.isEmpty && s.text) {
+        const pin = s
+        await update($, pins, list => (list.length >= MAX_PINS || list.some(p => pinKey(p) === pinKey(pin)) ? list : [...list, pin]))
+      }
+      return
+    case 'explain': {
+      if (demo || !s) return
+      lastSent.delete('selection')
+      const text = !s.isEmpty && s.text
+        ? `Explain ${rangeLabel(s)} of \`${fileName(s.filePath)}\`.`
+        : `Explain \`${fileName(s.filePath)}\`.`
+      await sendExplain($, text)
+      return
+    }
+  }
+  if (key.startsWith('unpin:') && !demo) {
+    const target = key.slice('unpin:'.length)
+    await update($, pins, list => list.filter(p => pinKey(p) !== target))
+  }
+}
+
+export const register: Register = on => {
   on('command.run', { command: 'editor-context-demo' }, async $ => {
     await update($, isDemo, v => !v)
     return { text: (await read($, isDemo)) ? 'Editor band demo on: every row is shown with sample data. Run again to turn it off.' : 'Editor band demo off.' }
@@ -461,6 +544,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    await endExplain($)
     await $.command.register({
       name: 'editor-context-demo',
       description: 'Toggle sample data in the editor band to preview every row',
@@ -520,6 +604,34 @@ export const register: Register = on => {
     return next({ ...e, context: [...(e.context ?? []), ...blocks] })
   })
 
+  on('turn.start', async ($, e, next) => {
+    const started = await next(e)
+    turnState.isRunning = true
+    // Queued messages can enter as one turn, so the text may be anywhere in it.
+    if (explainTurn.text && explainTurn.turnId === null && (explainTurn.isNext || e.text.includes(explainTurn.text))) {
+      explainTurn.turnId = e.turnId
+    }
+    explainTurn.isNext = false
+    return started
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const done = await next(e)
+    if (e.agentId) return done
+    turnState.isRunning = false
+    if (explainTurn.turnId !== null && e.turnId === explainTurn.turnId) await endExplain($)
+    return done
+  })
+
+  // A custom control (controls.tsx) posts { press: true }; its Client's key names the button.
+  on('ui.message', async ($, e, next) => {
+    const data = e.data as { press?: unknown } | null
+    if (e.module.endsWith('controls.tsx') && data !== null && typeof data === 'object' && data.press === true) {
+      await runAction($, e.element)
+    }
+    return next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isDesktop(e.surface) || e.props.hasSurvey) return next(e)
     if (!isActive) void startBridge($)
@@ -550,7 +662,8 @@ export const register: Register = on => {
     if (!demo && !(await read($, ide))) {
       const n = await read($, notice)
       if (!n || (await read($, isNoticeHidden))) return below
-      const { Box, Button, Text } = $.ui.resolve(e)
+      const elements = $.ui.resolve(e)
+      const { Box, Button, Text } = elements
       const message =
         n.kind === 'no-node' ? `Editor context needs Node.js ${MIN_NODE_MAJOR} or later on this machine.`
         : n.kind === 'disconnected' ? `Lost connection to ${n.ide ?? 'your editor'}. Reconnecting\u2026`
@@ -562,7 +675,11 @@ export const register: Register = on => {
             <Text dimColor>{message}</Text>
           </Box>
           <Box flexShrink={0}>
-            <Button key="close-notice" label="Close" onPress={() => update($, isNoticeHidden, () => true)} />
+            {'Client' in elements ? (
+              <elements.Client key="close-notice" module="./controls.tsx" props={{ kind: 'button', label: 'Close', icon: ICONS.close, variant: 'ghost' }} />
+            ) : (
+              <Button key="close-notice" label="Close" onPress={() => void runAction($, 'close-notice')} />
+            )}
           </Box>
         </Box>
       )
@@ -587,29 +704,39 @@ export const register: Register = on => {
     const { Box, Button, Text } = elements
     const hasSvg = 'Svg' in elements
 
-    const explain = () => {
-      if (!s || demo) return
-      lastSent.delete('selection')
-      const text = hasSelection
-        ? `Explain ${rangeLabel(s)} of \`${fileName(s.filePath)}\`.`
-        : `Explain \`${fileName(s.filePath)}\`.`
-      void $.prompt.submit({ text, asUser: true })
-    }
+    const explaining = await read($, isExplaining)
 
     const icon = (name: string, color = ICON_COLOR) =>
       hasSvg ? <elements.Svg source={iconSvg(name, color)} alt={name} width={ICON_SIZE} height={ICON_SIZE} /> : null
 
-    // An icon and its button, side by side: a Button carries a text label only.
-    const action = (key: string, iconName: string, label: string, onPress: () => unknown) => (
-      <Box key={`action:${key}`} flexDirection="row" alignItems="center" columnGap={1}>
-        {icon(iconName)}
-        <Button key={key} label={label} onPress={() => { void onPress() }} />
-      </Box>
-    )
+    // Where the app can draw them, buttons are custom controls (controls.tsx, one Client
+    // each) with the icon inside; otherwise a native Button with the icon beside it.
+    const isCustom = 'Client' in elements
 
-    // Mid-dot separators between actions in a group.
-    const dotted = (group: string, items: any[]): any[] =>
-      items.filter(Boolean).flatMap((item, i) => (i === 0 ? [item] : [<Text key={`${group}-dot-${i}`} dimColor>{'\u00b7'}</Text>, item]))
+    // A button. A press is ignored while the same button's last action is still running;
+    // a busy one (Explain, until its turn completes) is drawn dim with "…".
+    const action = (key: string, iconName: string, label: string, isBusy = false, variant: 'neutral' | 'ghost' = 'neutral') => {
+      if (isCustom) {
+        return <elements.Client key={key} module="./controls.tsx" props={{ kind: 'button', label, icon: ICONS[iconName], variant, isBusy }} />
+      }
+      return (
+        <Box key={`action:${key}`} flexDirection="row" alignItems="center" columnGap={1}>
+          {icon(iconName, isBusy ? BUSY_ICON_COLOR : ICON_COLOR)}
+          {isBusy ? (
+            <Button key={key} label={`${label}…`} dimColor onPress={() => { void runAction($, key) }} />
+          ) : (
+            <Button key={key} label={label} onPress={() => { void runAction($, key) }} />
+          )}
+        </Box>
+      )
+    }
+
+    // Custom controls separate themselves; native ones get mid-dots between them.
+    const dotted = (group: string, items: any[]): any[] => {
+      const present = items.filter(Boolean)
+      if (isCustom) return present
+      return present.flatMap((item, i) => (i === 0 ? [item] : [<Text key={`${group}-dot-${i}`} dimColor>{'·'}</Text>, item]))
+    }
 
     // Svg-capable surfaces get a drawn dot; the terminal gets the glyph.
     const dotSvg = paused
@@ -635,15 +762,15 @@ export const register: Register = on => {
           </Box>
           <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
             {dotted('actions', [
-              dirty && s ? action('save', 'save', 'Save', () => !demo && ideCall($, 'saveDocument', { filePath: s.filePath })) : null,
-              s ? action('explain', 'explain', 'Explain', explain) : null,
-              canPin && s ? action('pin', 'pin', 'Pin', () => !demo && update($, pins, list => [...list, s])) : null,
+              dirty && s ? action('save', 'save', 'Save') : null,
+              s ? action('explain', 'explain', 'Explain', explaining) : null,
+              canPin && s ? action('pin', 'pin', 'Pin') : null,
               files.length > 0 && !showRecent
-                ? action('show-recent', 'recent', 'Recent', () => update($, isRecentHidden, () => false))
+                ? action('show-recent', 'recent', 'Recent')
                 : null,
               paused
-                ? action('pause', 'resume', 'Resume', () => update($, isPaused, () => false))
-                : action('pause', 'pause', 'Pause', () => update($, isPaused, () => true)),
+                ? action('pause', 'resume', 'Resume')
+                : action('pause', 'pause', 'Pause'),
             ])}
           </Box>
         </Box>
@@ -659,8 +786,7 @@ export const register: Register = on => {
                   <Text dimColor>{`${rangeLabel(pin)} \u00b7 ${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
                 </Box>
                 <Box flexShrink={0}>
-                  {action(`unpin:${pinKey(pin)}`, 'unpin', 'Unpin', () =>
-                    !demo && update($, pins, list => list.filter(p => pinKey(p) !== pinKey(pin))))}
+                  {action(`unpin:${pinKey(pin)}`, 'unpin', 'Unpin')}
                 </Box>
               </Box>
             ))}
@@ -689,7 +815,7 @@ export const register: Register = on => {
               ))}
             </Box>
             <Box flexShrink={0}>
-              {action('close-recent', 'close', 'Close', () => !demo && update($, isRecentHidden, () => true))}
+              {action('close-recent', 'close', 'Close', false, 'ghost')}
             </Box>
           </Box>
         ) : null}

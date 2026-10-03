@@ -20,6 +20,8 @@ declare module 'claude-code' {
       isDemo: boolean
       notice: { kind: string; ide?: string } | null
       isNoticeHidden: boolean
+      /** Explain's message is still being worked on: the button ignores presses until its turn completes. */
+      isExplaining: boolean
     }
   }
 }

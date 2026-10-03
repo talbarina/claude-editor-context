@@ -6,7 +6,7 @@
 
 A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.4.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.5.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
@@ -29,7 +29,7 @@ The band shows the file, the line range and how many lines are selected. It upda
 Claude gets the file path and the selected code. It stays out of your chat.
 
 💡 **Explain**<br>
-One click asks Claude to explain the selection, or the whole file.
+One click asks Claude to explain the selection, or the whole file. The button stays busy until Claude has answered, so a double click doesn't ask twice.
 
 📌 **Pin**<br>
 Pin as many selections as you like, from any files. They're attached to every message until you unpin them.
@@ -45,6 +45,9 @@ Stop sharing until you press Resume.
 
 🔌 **Connection notices**<br>
 Says when no editor is open or the connection drops.
+
+🎛️ **Proper buttons**<br>
+The band's buttons are drawn by the mod itself, with the icon inside and hover and pressed states, styled after the app.
 
 ## Quick start
 
@@ -133,6 +136,8 @@ It picks the window that has your session's folder open. Start the session in th
 The Claude Code extension runs a small local server in your editor and records its port in `~/.claude/ide/`. When a desktop session starts, the mod launches a Node helper that connects to that server, listens for selection changes, and checks for unsaved changes every 1.5 seconds.
 
 The editor accepts one client at a time, so the first session's helper holds the connection and the other sessions listen to it over a local socket. When that session closes, another takes over.
+
+Each button in the band is a small custom control (`hooks/controls.tsx`) that the app runs on its own. A click posts a press back to the mod, which runs that button's action.
 
 To see exactly which events the mod handles and what it calls before you install it:
 
