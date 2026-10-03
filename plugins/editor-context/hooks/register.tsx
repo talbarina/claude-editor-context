@@ -35,8 +35,6 @@ const ICONS: Record<string, string> = {
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
 }
 
-// A 1px rule between this band and other mods' content below it; the box clips it.
-const DIVIDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="${ICON_COLOR}" fill-opacity="0.3"/></svg>`
 
 function iconSvg(name: string, color: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`
@@ -535,13 +533,13 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" width="100%" rowGap={1}>
           {tree}
-          <Box key="divider-below" width="100%" overflow="hidden">
-            {'Svg' in table ? (
-              <table.Svg source={DIVIDER_SVG} alt="" width={4000} height={1} />
-            ) : (
+          {'Svg' in table ? (
+            <Box key="divider-below" width="100%" height={0} borderStyle="single" borderColor={ICON_COLOR} borderDimColor />
+          ) : (
+            <Box key="divider-below" width="100%" overflow="hidden">
               <Text dimColor wrap="truncate-end">{'\u2500'.repeat(400)}</Text>
-            )}
-          </Box>
+            </Box>
+          )}
           {below}
         </Box>
       )
@@ -634,7 +632,7 @@ export const register: Register = on => {
             {dirty ? <Text color={WARN_COLOR}>unsaved</Text> : null}
             {paused ? <Text dimColor>(not shared)</Text> : null}
           </Box>
-          <Box flexDirection="row" alignItems="center" columnGap={2} flexShrink={0}>
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
             {dotted('actions', [
               dirty && s ? action('save', 'save', 'Save', () => !demo && ideCall($, 'saveDocument', { filePath: s.filePath })) : null,
               s ? action('explain', 'explain', 'Explain', explain) : null,
