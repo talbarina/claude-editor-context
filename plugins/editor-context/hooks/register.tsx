@@ -523,8 +523,10 @@ export const register: Register = on => {
     if (!isActive) void startBridge($)
     // Other mods may draw in this band too: keep theirs, below ours.
     const below = await next(e)
+    // The bottom of the chain is the engine's own (empty) band: it can't sit inside our Box.
+    const hasBelow = below !== null && below !== undefined && (below as { type?: string }).type !== 'engine'
     const stackBelow = (tree: any) => {
-      if (!below) return tree
+      if (!hasBelow) return tree
       const { Box } = $.ui.resolve(e)
       return (
         <Box flexDirection="column" width="100%" rowGap={1}>
