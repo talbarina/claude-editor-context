@@ -22,7 +22,7 @@ const WARN_COLOR = '#E5A50A'
 const DOT_SIZE = 8
 const ICON_SIZE = 14
 const ICON_COLOR = '#8A8A8A'
-const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.5"/></svg>'
+const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.3"/></svg>'
 
 // Tabler outline icons (tabler.io/icons, MIT), the set the desktop app ships.
 const ICONS: Record<string, string> = {
