@@ -22,7 +22,7 @@ const WARN_COLOR = '#E5A50A'
 const DOT_SIZE = 8
 const ICON_SIZE = 14
 const ICON_COLOR = '#8A8A8A'
-const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.3"/></svg>'
+const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.2"/></svg>'
 
 // Tabler outline icons (tabler.io/icons, MIT), the set the desktop app ships.
 const ICONS: Record<string, string> = {
@@ -535,7 +535,7 @@ export const register: Register = on => {
         <Box flexDirection="column" width="100%" rowGap={1}>
           {tree}
           {'Svg' in table ? (
-            <Box key="divider-below" width="100%"><table.Svg source={DIVIDER_SVG} alt="divider" height={1} /></Box>
+            <Box key="divider-below" width="100%"><table.Svg source={DIVIDER_SVG} alt="divider" height={0.5} /></Box>
           ) : (
             <Box key="divider-below" width="100%" overflow="hidden">
               <Text dimColor wrap="truncate-end">{'\u2500'.repeat(400)}</Text>

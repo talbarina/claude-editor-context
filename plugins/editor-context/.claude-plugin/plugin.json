@@ -1,6 +1,6 @@
 {
   "name": "editor-context",
-  "version": "1.3.9",
+  "version": "1.4.0",
   "description": "Shows the file and lines you have selected in Cursor or VS Code above the Claude Code prompt in the desktop app, and quietly tells Claude what you're looking at with each message",
   "author": {
     "name": "Tal Barina",
