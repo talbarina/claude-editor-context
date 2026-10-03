@@ -1,5 +1,5 @@
 // One custom control, drawn by the desktop app: a button with its icon inside,
-// or a checkbox chip. Each control is its own Client, so a click anywhere in it
+// a checkbox chip, or a count badge (a clay circle and a label) that opens a list. Each control is its own Client, so a click anywhere in it
 // is a press of it: no hit-testing. The module posts { press: true } and the
 // hooks module (register.tsx, `ui.message`) runs the action by the Client's key.
 //
@@ -12,12 +12,14 @@
 type Variant = 'neutral' | 'accent' | 'ghost'
 
 type ControlProps = {
-  kind: 'button' | 'check'
+  kind: 'button' | 'check' | 'badge'
   label: string
+  /** A badge's number, drawn in its circle. */
+  count?: number
   /** Tabler path markup for the icon; drawn in the state's color. */
   icon?: string
   variant?: Variant
-  /** A checkbox's state. */
+  /** A checkbox's state; for a badge, whether its list is open. */
   isOn?: boolean
   /** Its message is still being worked on: drawn dim with a spinner, presses ignored. */
   isBusy?: boolean
@@ -58,6 +60,22 @@ function boxSource(isOn: boolean) {
 
 const svg = (source: string, alt: string, size = ICON_PX) => h('Svg', { source, alt, width: size, height: size })
 
+const CHEVRON_DOWN = '<path d="M6 9l6 6l6 -6"/>'
+const CHEVRON_UP = '<path d="M6 15l6 -6l6 6"/>'
+
+// A badge's count: a clay circle, a pill from two digits.
+const COUNT_PX = 20
+
+function countWidth(n: number) {
+  return COUNT_PX + Math.max(0, String(n).length - 1) * 8
+}
+
+function countSource(n: number) {
+  const w = countWidth(n)
+  const r = COUNT_PX / 2
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${COUNT_PX}" viewBox="0 0 ${w} ${COUNT_PX}"><rect width="${w}" height="${COUNT_PX}" rx="${r}" fill="${ACCENT}"/><text x="${w / 2}" y="${r}" dy="0.35em" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="12" font-weight="700" fill="${ACCENT_INK}">${n}</text></svg>`
+}
+
 const Control = (props: ControlProps, surface: any) => {
   const { Box, Text } = surface.elements
   const state: PointerState = surface.state ?? { isHover: false, isDown: false }
@@ -77,6 +95,27 @@ const Control = (props: ControlProps, surface: any) => {
       surface.setState({ isHover: isInside, isDown: false })
     }
   })
+
+  if (props.kind === 'badge') {
+    const n = props.count ?? 0
+    const bg = state.isDown ? '#36292499' : state.isHover || props.isOn ? '#4A3630' : '#3E2F2A'
+    return Box({
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: 1,
+      paddingLeft: 0.6,
+      paddingRight: 1.25,
+      paddingY: 0.2,
+      borderStyle: 'round',
+      borderColor: props.isOn ? '#74483A' : bg,
+      backgroundColor: bg,
+      children: [
+        h('Svg', { source: countSource(n), alt: String(n), width: countWidth(n), height: COUNT_PX }),
+        Text({ color: ACCENT_TEXT, bold: true, children: props.label }),
+        svg(iconSource(props.isOn ? CHEVRON_UP : CHEVRON_DOWN, ACCENT_TEXT), props.isOn ? 'hide' : 'show', 13),
+      ],
+    })
+  }
 
   if (props.kind === 'check') {
     const isOn = props.isOn === true

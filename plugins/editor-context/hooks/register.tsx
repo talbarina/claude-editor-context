@@ -20,7 +20,7 @@ const MAX_RECENT = 5
 const MAX_PINS = 10
 const DOT_COLOR = '#D97757'
 const WARN_COLOR = '#E5A50A'
-const DOT_SIZE = 8
+const DOT_SIZE = 9
 const ICON_SIZE = 14
 const ICON_COLOR = '#8A8A8A'
 const BUSY_ICON_COLOR = '#5C5C5C'
@@ -292,12 +292,6 @@ function lineCount(s: EditorSelection) {
 
 function rangeLabel(s: EditorSelection) {
   return s.startLine === s.endLine ? `L${s.startLine}` : `L${s.startLine}–${s.endLine}`
-}
-
-function lineLabel(s: EditorSelection) {
-  if (s.isEmpty) return `L${s.startLine}`
-  const count = lineCount(s)
-  return `${rangeLabel(s)} · ${count} ${count === 1 ? 'line' : 'lines'} selected`
 }
 
 function pinKey(p: EditorSelection) {
@@ -746,6 +740,13 @@ export const register: Register = on => {
       ? <elements.Svg source={dotSvg} alt={paused ? 'paused' : 'sharing'} width={DOT_SIZE} height={DOT_SIZE} />
       : <Text color={paused ? undefined : DOT_COLOR} dimColor={paused}>{paused ? '\u25cb' : '\u25cf'}</Text>
 
+    // A small rounded chip: the line range, and the unsaved mark.
+    const chip = (key: string, label: string, color?: string, bg = '#FFFFFF0F') => (
+      <Box key={key} borderStyle="round" borderColor={bg} backgroundColor={bg} paddingX={0.75} paddingY={0}>
+        {color ? <Text color={color}>{label}</Text> : <Text dimColor>{label}</Text>}
+      </Box>
+    )
+
     return stackBelow(
       <Box flexDirection="column" width="100%">
         <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
@@ -756,8 +757,9 @@ export const register: Register = on => {
                 {s ? fileName(s.filePath) : 'no file focused'}
               </Text>
             </Box>
-            {s ? <Text dimColor>{lineLabel(s)}</Text> : null}
-            {dirty ? <Text color={WARN_COLOR}>unsaved</Text> : null}
+            {s ? chip('lines', s.isEmpty ? `L${s.startLine}` : rangeLabel(s)) : null}
+            {s && !s.isEmpty ? <Text dimColor>{`${lineCount(s)} ${lineCount(s) === 1 ? 'line' : 'lines'} selected`}</Text> : null}
+            {dirty ? chip('unsaved', 'unsaved', '#F2C55C', '#E5A50A24') : null}
             {paused ? <Text dimColor>(not shared)</Text> : null}
           </Box>
           <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
@@ -783,7 +785,8 @@ export const register: Register = on => {
                     {icon('pin')}
                     <Text>{fileName(pin.filePath)}</Text>
                   </Box>
-                  <Text dimColor>{`${rangeLabel(pin)} \u00b7 ${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
+                  {chip(`lines:${pinKey(pin)}`, rangeLabel(pin))}
+                  <Text dimColor>{`${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
                 </Box>
                 <Box flexShrink={0}>
                   {action(`unpin:${pinKey(pin)}`, 'unpin', 'Unpin')}
