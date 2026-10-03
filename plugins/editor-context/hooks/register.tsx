@@ -35,6 +35,9 @@ const ICONS: Record<string, string> = {
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
 }
 
+// A 1px rule between this band and other mods' content below it; the box clips it.
+const DIVIDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="${ICON_COLOR}" fill-opacity="0.3"/></svg>`
+
 function iconSvg(name: string, color: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`
 }
@@ -527,10 +530,18 @@ export const register: Register = on => {
     const hasBelow = below !== null && below !== undefined && (below as { type?: string }).type !== 'engine'
     const stackBelow = (tree: any) => {
       if (!hasBelow) return tree
-      const { Box } = $.ui.resolve(e)
+      const table = $.ui.resolve(e)
+      const { Box, Text } = table
       return (
         <Box flexDirection="column" width="100%" rowGap={1}>
           {tree}
+          <Box key="divider-below" width="100%" overflow="hidden">
+            {'Svg' in table ? (
+              <table.Svg source={DIVIDER_SVG} alt="" width={4000} height={1} />
+            ) : (
+              <Text dimColor wrap="truncate-end">{'\u2500'.repeat(400)}</Text>
+            )}
+          </Box>
           {below}
         </Box>
       )
