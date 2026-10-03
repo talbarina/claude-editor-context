@@ -608,6 +608,10 @@ export const register: Register = on => {
       </Box>
     )
 
+    // Mid-dot separators between actions in a group.
+    const dotted = (group: string, items: any[]): any[] =>
+      items.filter(Boolean).flatMap((item, i) => (i === 0 ? [item] : [<Text key={`${group}-dot-${i}`} dimColor>{'\u00b7'}</Text>, item]))
+
     // Svg-capable surfaces get a drawn dot; the terminal gets the glyph.
     const dotSvg = paused
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="${ICON_COLOR}" stroke-width="1.5"/></svg>`
@@ -631,15 +635,17 @@ export const register: Register = on => {
             {paused ? <Text dimColor>(not shared)</Text> : null}
           </Box>
           <Box flexDirection="row" alignItems="center" columnGap={2} flexShrink={0}>
-            {dirty && s ? action('save', 'save', 'Save', () => !demo && ideCall($, 'saveDocument', { filePath: s.filePath })) : null}
-            {s ? action('explain', 'explain', 'Explain', explain) : null}
-            {canPin && s ? action('pin', 'pin', 'Pin', () => !demo && update($, pins, list => [...list, s])) : null}
-            {files.length > 0 && !showRecent
-              ? action('show-recent', 'recent', 'Recent', () => update($, isRecentHidden, () => false))
-              : null}
-            {paused
-              ? action('pause', 'resume', 'Resume', () => update($, isPaused, () => false))
-              : action('pause', 'pause', 'Pause', () => update($, isPaused, () => true))}
+            {dotted('actions', [
+              dirty && s ? action('save', 'save', 'Save', () => !demo && ideCall($, 'saveDocument', { filePath: s.filePath })) : null,
+              s ? action('explain', 'explain', 'Explain', explain) : null,
+              canPin && s ? action('pin', 'pin', 'Pin', () => !demo && update($, pins, list => [...list, s])) : null,
+              files.length > 0 && !showRecent
+                ? action('show-recent', 'recent', 'Recent', () => update($, isRecentHidden, () => false))
+                : null,
+              paused
+                ? action('pause', 'resume', 'Resume', () => update($, isPaused, () => false))
+                : action('pause', 'pause', 'Pause', () => update($, isPaused, () => true)),
+            ])}
           </Box>
         </Box>
         {pinList.length > 0 ? (
