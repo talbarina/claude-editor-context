@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { EditorSelection } from '../types'
+import type { Attached, EditorSelection } from '../types'
+import { type Chip, sentWith } from './chips'
 
 const selection = atom({ plugin: 'editor-context', key: 'selection' } as const, null)
 const ide = atom({ plugin: 'editor-context', key: 'ide' } as const, null)
@@ -14,6 +15,10 @@ const isDemo = atom({ plugin: 'editor-context', key: 'isDemo' } as const, false)
 const notice = atom({ plugin: 'editor-context', key: 'notice' } as const, null)
 const isNoticeHidden = atom({ plugin: 'editor-context', key: 'isNoticeHidden' } as const, false)
 const isExplaining = atom({ plugin: 'editor-context', key: 'isExplaining' } as const, false)
+// Sharing is off until the Editor tab (or the switch in its card) turns it on: off, it sends nothing.
+const isShown = atom({ plugin: 'editor-context', key: 'isShown' } as const, false)
+const attached = atom({ plugin: 'editor-context', key: 'attached' } as const, [])
+const MAX_ATTACHED = 30
 
 const MAX_TEXT = 20000
 const MAX_RECENT = 5
@@ -32,6 +37,7 @@ const ICONS: Record<string, string> = {
   explain: '<path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7"/><path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3"/><path d="M9.7 17l4.6 0"/>',
   pin: '<path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/>',
   unpin: '<path d="M3 3l18 18"/><path d="M15 4.5l-3.249 3.249m-2.57 1.433l-2.181 .818l-1.5 1.5l7 7l1.5 -1.5l.82 -2.186m1.43 -2.563l3.25 -3.251"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/>',
+  file: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>',
   pause: '<path d="M6 6a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M14 6a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>',
   resume: '<path d="M7 4v16l13 -8z"/>',
   recent: '<path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/>',
@@ -493,6 +499,20 @@ async function actionOf($: any, key: string) {
   const demo = await read($, isDemo)
   const s = await read($, selection)
   switch (key) {
+    case 'editor-on':
+    case 'editor-off':
+      if ((key === 'editor-on') === (await read($, isShown))) return
+    // falls through: same as the tab
+    case 'editor-switch':
+    case 'launch-tab:editor-context': {
+      // The tab turns it on and off. Off, nothing is sent; on, it connects and sends.
+      // On and off is the one switch: Pause is folded into it.
+      lastSent.clear()
+      await update($, isPaused, () => false)
+      await update($, isShown, v => !v)
+      if (await read($, isShown)) void startBridge($)
+      return
+    }
     case 'close-notice':
       await update($, isNoticeHidden, () => true)
       return
@@ -524,15 +544,71 @@ async function actionOf($: any, key: string) {
       return
     }
   }
+  if (key.startsWith('open-pin:') && !demo) {
+    const target = key.slice('open-pin:'.length)
+    const pin = (await read($, pins)).find(p => pinKey(p) === target)
+    if (pin) {
+      const lines = pin.text.split('\n').filter(l => l.trim() !== '')
+      await ideCall($, 'openFile', { filePath: pin.filePath, startText: lines[0] ?? '', endText: lines[lines.length - 1] ?? '', makeFrontmost: true })
+    }
+    return
+  }
+  if (key.startsWith('recent:') && !demo) {
+    await ideCall($, 'openFile', { filePath: key.slice('recent:'.length), startText: '', endText: '', makeFrontmost: true })
+    return
+  }
   if (key.startsWith('unpin:') && !demo) {
     const target = key.slice('unpin:'.length)
     await update($, pins, list => list.filter(p => pinKey(p) !== target))
   }
 }
 
+// ---- Launcher ----
+// On the desktop each mod draws one tab in a shared row above the prompt; its full
+// panel opens in a pane. Each mod's band nests the bands of mods loaded after it, so
+// whichever draws outermost lays the tabs out in one order, then any other bands.
+const PANE = 'editor-context'
+// The floating card's content width, in ch: the app caps the card at 360px and pads it
+// about 12px a side, which leaves 336px; one ch of the app's 13px text is about 8.2px.
+const POPOVER_WIDTH = 41
+// A launcher tab's key carries its place in the row: "launch:<rank>:<name>".
+const launchRank = (key: string) => Number(key.match(/^launch:(\d+):/)?.[1] ?? 9)
+const POWER_ICON = '<path d="M7 6a7.75 7.75 0 1 0 10 0"/><path d="M12 4l0 8"/>'
+const FILE_ICON = '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>'
+const CODE_ICON = '<path d="M7 8l-4 4l4 4"/><path d="M17 8l4 4l-4 4"/><path d="M14 4l-4 16"/>'
+
+function nodeKey(node: any): string {
+  const key = node?.props?.key
+  return typeof key === 'string' ? key : ''
+}
+
+function stackLauncher(Box: any, mine: any, below: any, hasBelow: boolean, divider: (key: string) => any) {
+  let tabs: any[] = []
+  let rest: any[] = []
+  if (hasBelow && nodeKey(below) === 'launcher-stack') {
+    const [row, ...others] = below.children ?? []
+    tabs = row?.children ?? []
+    rest = others.filter((c: any) => !nodeKey(c).startsWith('launcher-divider'))
+  } else if (hasBelow) {
+    rest = [below]
+  }
+  const sorted = [mine, ...tabs]
+    .map((node, i) => ({ node, i, rank: launchRank(nodeKey(node)) }))
+    .sort((x, y) => x.rank - y.rank || x.i - y.i)
+    .map(x => x.node)
+  const children: any[] = [
+    <Box key="launcher-row" flexDirection="row" alignItems="center" columnGap={1} flexWrap="wrap">{sorted}</Box>,
+  ]
+  rest.forEach((node, i) => children.push(divider(`launcher-divider:${i}`), node))
+  return <Box key="launcher-stack" flexDirection="column" width="100%" rowGap={1}>{children}</Box>
+}
+
 export const register: Register = on => {
   on('command.run', { command: 'editor-context-demo' }, async $ => {
     await update($, isDemo, v => !v)
+    if (await read($, isDemo)) {
+      await update($, isShown, () => true)
+    }
     return { text: (await read($, isDemo)) ? 'Editor band demo on: every row is shown with sample data. Run again to turn it off.' : 'Editor band demo off.' }
   })
 
@@ -544,17 +620,19 @@ export const register: Register = on => {
       description: 'Toggle sample data in the editor band to preview every row',
     })
     // The app's sessions start with no surface of their own and list it here.
-    if (isDesktop(e.surface) || (await $.session.surfaces()).some(isDesktop)) void startBridge($)
+    const isOnDesktop = isDesktop(e.surface) || (await $.session.surfaces()).some(isDesktop)
+    if (isOnDesktop && (await read($, isShown))) void startBridge($)
     return result
   })
 
   // A desktop session may start without a surface and attach the app after.
   on('session.attach', async ($, e, next) => {
-    if (isDesktop(e.surface)) void startBridge($)
+    if (isDesktop(e.surface) && (await read($, isShown))) void startBridge($)
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (!(await read($, isShown))) return next(e)
     if (!isActive && (await $.session.surfaces()).some(isDesktop)) void startBridge($)
     if (!isActive) return next(e)
     if (isStarting) await Promise.race([started, $.clock.sleep(START_WAIT_MS)])
@@ -576,6 +654,7 @@ export const register: Register = on => {
       main += ' The file has unsaved changes in the editor, so the version on disk may differ from what the user sees.'
     }
     blocks.push(main)
+    const chips: Attached['chips'] = [{ icon: 'file', label: s.isEmpty ? `${fileName(s.filePath)} · L${s.startLine}` : `${fileName(s.filePath)} · ${rangeLabel(s)}` }]
 
     // Each pin's code goes once; while unchanged, one line names them all.
     const unchanged: string[] = []
@@ -589,13 +668,26 @@ export const register: Register = on => {
     if (unchanged.length > 0) {
       blocks.push(`Still pinned, unchanged since they were sent: ${unchanged.join('; ')}.`)
     }
+    for (const pin of await read($, pins)) chips.push({ icon: 'pin', label: `${fileName(pin.filePath)} · ${rangeLabel(pin)}` })
+    await update($, attached, list => [...list, { text: e.text, chips }].slice(-MAX_ATTACHED))
 
-    const files = await read($, recent)
-    if (files.length > 0 && !(await read($, isRecentHidden)) && isFresh('recent', files.join('|'))) {
-      blocks.push(`Files the user recently viewed in ${s.ide}, most recent first: ${files.join(', ')}`)
-    }
+    // Recent files show in the popover only; they're not sent.
 
     return next({ ...e, context: [...(e.context ?? []), ...blocks] })
+  })
+
+  // On the desktop, your message shows what went with it: chips above the bubble (chips.tsx).
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    if (e.surface !== 'desktop') return next(e)
+    const props = e.props as { text?: string; origin?: { kind: string } }
+    // The desktop marks every message row it draws as 'sdk'; the text finds what went with it.
+    const kind = props.origin?.kind
+    if (kind !== 'sdk' && kind !== 'composer' && kind !== 'bridge' && kind !== 'plugin') return next(e)
+    const sent = [...(await read($, attached))].reverse().find(a => a.text === props.text)
+    const elements = $.ui.resolve(e) as any
+    if (!sent || !elements.Svg) return next(e)
+    const mine: Chip[] = sent.chips.map((c, i) => ({ key: `0:editor-context:${i}`, icon: ICONS[c.icon], label: c.label }))
+    return sentWith(elements, await next(e), mine)
   })
 
   on('turn.start', async ($, e, next) => {
@@ -626,203 +718,190 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The pane closed, by its X or the tab: off, nothing more is sent.
+  on('ui.close', async ($, e, next) => {
+    if ((e as { id?: string }).id === PANE) {
+      lastSent.clear()
+      await update($, isShown, () => false)
+    }
+    return next(e)
+  })
+
+  // The launcher tab, in the row above the prompt (desktop).
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (!isDesktop(e.surface) || e.props.hasSurvey) return next(e)
-    if (!isActive) void startBridge($)
-    // Other mods may draw in this band too: keep theirs, below ours.
     const below = await next(e)
-    // The bottom of the chain is the engine's own (empty) band: it can't sit inside our Box.
     const hasBelow = below !== null && below !== undefined && (below as { type?: string }).type !== 'engine'
-    const stackBelow = (tree: any) => {
-      if (!hasBelow) return tree
-      const table = $.ui.resolve(e)
-      const { Box, Text } = table
-      return (
-        <Box flexDirection="column" width="100%" rowGap={1}>
-          {tree}
-          {'Svg' in table ? (
-            <Box key="divider-below" width="100%"><table.Svg source={DIVIDER_SVG} alt="divider" height={0.5} /></Box>
-          ) : (
-            <Box key="divider-below" width="100%" overflow="hidden">
-              <Text dimColor wrap="truncate-end">{'\u2500'.repeat(400)}</Text>
-            </Box>
-          )}
-          {below}
-        </Box>
-      )
-    }
+    const elements = $.ui.resolve(e)
+    const { Box, Text } = elements
+    if (!('Client' in elements)) return below
     const demo = await read($, isDemo)
-    const live = await read($, selection)
-    if (!demo && !(await read($, ide))) {
-      const n = await read($, notice)
-      if (!n || (await read($, isNoticeHidden))) return below
-      const elements = $.ui.resolve(e)
-      const { Box, Button, Text } = elements
-      const message =
-        n.kind === 'no-node' ? `Editor context needs Node.js ${MIN_NODE_MAJOR} or later on this machine.`
-        : n.kind === 'disconnected' ? `Lost connection to ${n.ide ?? 'your editor'}. Reconnecting\u2026`
-        : 'No editor connected. Open VS Code or Cursor with the Claude Code extension installed.'
-      return stackBelow(
-        <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
-          <Box flexDirection="row" alignItems="center" columnGap={1} flexGrow={1} flexShrink={1}>
-            <Text color={WARN_COLOR}>{'\u25cb'}</Text>
-            <Text dimColor>{message}</Text>
-          </Box>
-          <Box flexShrink={0}>
-            {'Client' in elements ? (
-              <elements.Client key="close-notice" module="./controls.tsx" props={{ kind: 'button', label: 'Close', icon: ICONS.close, variant: 'ghost' }} />
-            ) : (
-              <Button key="close-notice" label="Close" onPress={() => void runAction($, 'close-notice')} />
-            )}
-          </Box>
-        </Box>
-      )
-    }
-
+    const shown = demo || (await read($, isShown))
     const s: EditorSelection | null = demo
       ? { ide: 'Cursor', filePath: '/demo/src/components/CheckoutForm.tsx', startLine: 12, endLine: 30, isEmpty: false, text: 'demo' }
-      : live
-    const paused = await read($, isPaused)
-    const dirty = demo || (await read($, isDirty))
-    const pinList: EditorSelection[] = demo
-      ? [
-          { ide: 'Cursor', filePath: '/demo/src/hooks/useCart.ts', startLine: 36, endLine: 48, isEmpty: false, text: 'demo' },
-          { ide: 'Cursor', filePath: '/demo/src/api/client.ts', startLine: 3, endLine: 13, isEmpty: false, text: 'demo' },
-        ]
-      : await read($, pins)
-    const files = demo ? DEMO_RECENT : await read($, recent)
-    const showRecent = files.length > 0 && (demo || !(await read($, isRecentHidden)))
-    const hasSelection = Boolean(s && !s.isEmpty && s.text)
-    const canPin = hasSelection && pinList.length < MAX_PINS && !pinList.some(p => s && pinKey(p) === pinKey(s))
-    const elements = $.ui.resolve(e)
-    const { Box, Button, Text } = elements
-    const hasSvg = 'Svg' in elements
-
-    const explaining = await read($, isExplaining)
-
-    const icon = (name: string, color = ICON_COLOR) =>
-      hasSvg ? <elements.Svg source={iconSvg(name, color)} alt={name} width={ICON_SIZE} height={ICON_SIZE} /> : null
-
-    // Where the app can draw them, buttons are custom controls (controls.tsx, one Client
-    // each) with the icon inside; otherwise a native Button with the icon beside it.
-    const isCustom = 'Client' in elements
-
-    // A button. A press is ignored while the same button's last action is still running;
-    // a busy one (Explain, until its turn completes) is drawn dim with "…".
-    const action = (key: string, iconName: string, label: string, isBusy = false, variant: 'neutral' | 'ghost' = 'neutral') => {
-      if (isCustom) {
-        return <elements.Client key={key} module="./controls.tsx" props={{ kind: 'button', label, icon: ICONS[iconName], variant, isBusy }} />
-      }
-      return (
-        <Box key={`action:${key}`} flexDirection="row" alignItems="center" columnGap={1}>
-          {icon(iconName, isBusy ? BUSY_ICON_COLOR : ICON_COLOR)}
-          {isBusy ? (
-            <Button key={key} label={`${label}…`} dimColor onPress={() => { void runAction($, key) }} />
-          ) : (
-            <Button key={key} label={label} onPress={() => { void runAction($, key) }} />
-          )}
+      : await read($, selection)
+    const hasIde = demo || Boolean(await read($, ide))
+    // On, the tab is the file and its lines; off, or with no editor, it says so.
+    const name = s ? fileName(s.filePath) : ''
+    const isFileTab = shown && hasIde && s !== null
+    const tabLabel = isFileTab ? name : 'Editor'
+    const note = isFileTab ? (s!.isEmpty ? `L${s!.startLine}` : rangeLabel(s!)) : !shown ? 'off' : 'no editor'
+    // Hovering the tab floats the full panel above it: the desktop lifts a hidden Box
+    // that hover reveals into a popover card (the app's own popover look, up to 360px wide).
+    const panel = await editorPanel($, e)
+    const mine = (
+      <Box key="launch:0:editor-context" flexDirection="row">
+        <elements.Client
+          key="launch-tab:editor-context"
+          module="./controls.tsx"
+          props={{ kind: 'tab', label: tabLabel, icon: isFileTab ? FILE_ICON : CODE_ICON, isOn: isFileTab, note, ...(isFileTab ? { dot: DOT_COLOR } : {}) }}
+        />
+        <Box position="absolute" top={-1} left={0} display="none" hover={{ display: 'flex' }} flexDirection="column">
+          {panel}
         </Box>
+      </Box>
+    )
+    const divider = (key: string) =>
+      'Svg' in elements ? (
+        <Box key={key} width="100%"><elements.Svg source={DIVIDER_SVG} alt="divider" height={0.5} /></Box>
+      ) : (
+        <Box key={key} width="100%" overflow="hidden"><Text dimColor wrap="truncate-end">{'\u2500'.repeat(400)}</Text></Box>
       )
-    }
-
-    // Custom controls separate themselves; native ones get mid-dots between them.
-    const dotted = (group: string, items: any[]): any[] => {
-      const present = items.filter(Boolean)
-      if (isCustom) return present
-      return present.flatMap((item, i) => (i === 0 ? [item] : [<Text key={`${group}-dot-${i}`} dimColor>{'·'}</Text>, item]))
-    }
-
-    // Svg-capable surfaces get a drawn dot; the terminal gets the glyph.
-    const dotSvg = paused
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="${ICON_COLOR}" stroke-width="1.5"/></svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="${DOT_COLOR}"/></svg>`
-    const dot = hasSvg
-      ? <elements.Svg source={dotSvg} alt={paused ? 'paused' : 'sharing'} width={DOT_SIZE} height={DOT_SIZE} />
-      : <Text color={paused ? undefined : DOT_COLOR} dimColor={paused}>{paused ? '\u25cb' : '\u25cf'}</Text>
-
-    // A small rounded chip: the line range, and the unsaved mark.
-    const chip = (key: string, label: string, color?: string, bg = '#FFFFFF0F') => (
-      <Box key={key} borderStyle="round" borderColor={bg} backgroundColor={bg} paddingX={0.75} paddingY={0}>
-        {color ? <Text color={color}>{label}</Text> : <Text dimColor>{label}</Text>}
-      </Box>
-    )
-
-    return stackBelow(
-      <Box flexDirection="column" width="100%">
-        <Box flexDirection="row" alignItems="center" width="100%" columnGap={2}>
-          <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1}>
-            <Box flexDirection="row" alignItems="center" columnGap={1}>
-              {dot}
-              <Text bold={!paused} dimColor={paused} wrap="truncate-middle">
-                {s ? fileName(s.filePath) : 'no file focused'}
-              </Text>
-            </Box>
-            {s ? chip('lines', s.isEmpty ? `L${s.startLine}` : rangeLabel(s)) : null}
-            {s && !s.isEmpty ? <Text dimColor>{`${lineCount(s)} ${lineCount(s) === 1 ? 'line' : 'lines'} selected`}</Text> : null}
-            {dirty ? chip('unsaved', 'unsaved', '#F2C55C', '#E5A50A24') : null}
-            {paused ? <Text dimColor>(not shared)</Text> : null}
-          </Box>
-          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
-            {dotted('actions', [
-              dirty && s ? action('save', 'save', 'Save') : null,
-              s ? action('explain', 'explain', 'Explain', explaining) : null,
-              canPin && s ? action('pin', 'pin', 'Pin') : null,
-              files.length > 0 && !showRecent
-                ? action('show-recent', 'recent', 'Recent')
-                : null,
-              paused
-                ? action('pause', 'resume', 'Resume')
-                : action('pause', 'pause', 'Pause'),
-            ])}
-          </Box>
-        </Box>
-        {pinList.length > 0 ? (
-          <Box flexDirection="column" width="100%" marginTop={1}>
-            {pinList.map(pin => (
-              <Box key={`pin:${pinKey(pin)}`} flexDirection="row" alignItems="center" width="100%" columnGap={2}>
-                <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1}>
-                  <Box flexDirection="row" alignItems="center" columnGap={1}>
-                    {icon('pin')}
-                    <Text>{fileName(pin.filePath)}</Text>
-                  </Box>
-                  {chip(`lines:${pinKey(pin)}`, rangeLabel(pin))}
-                  <Text dimColor>{`${lineCount(pin)} ${lineCount(pin) === 1 ? 'line' : 'lines'}`}</Text>
-                </Box>
-                <Box flexShrink={0}>
-                  {action(`unpin:${pinKey(pin)}`, 'unpin', 'Unpin')}
-                </Box>
-              </Box>
-            ))}
-            {pinList.length > 1 ? (
-              <Box flexDirection="row" justifyContent="flex-end" width="100%">
-                <Button key="unpin-all" plain dimColor label="Unpin all" onPress={() => { if (!demo) void update($, pins, () => []) }} />
-              </Box>
-            ) : null}
-          </Box>
-        ) : null}
-        {showRecent ? (
-          <Box flexDirection="row" alignItems="center" width="100%" columnGap={2} marginTop={1}>
-            <Box flexDirection="row" alignItems="center" columnGap={2} flexGrow={1} flexShrink={1} flexWrap="wrap">
-              <Box flexDirection="row" alignItems="center" columnGap={1}>
-                {icon('recent')}
-                <Text dimColor>Recent</Text>
-              </Box>
-              {files.map(f => (
-                <Button
-                  key={`recent:${f}`}
-                  plain
-                  dimColor
-                  label={fileName(f)}
-                  onPress={() => { if (!demo) void ideCall($, 'openFile', { filePath: f, startText: '', endText: '', makeFrontmost: true }) }}
-                />
-              ))}
-            </Box>
-            <Box flexShrink={0}>
-              {action('close-recent', 'close', 'Close', false, 'ghost')}
-            </Box>
-          </Box>
-        ) : null}
-      </Box>
-    )
+    return stackLauncher(Box, mine, below, hasBelow, divider)
   })
+
+}
+
+
+// The full panel, in the launcher tab's floating card, using its full width (POPOVER_WIDTH),
+// built like the app's own popovers: a "Share with Claude" switch on top, then the file,
+// its actions as menu rows, pins and recent files.
+async function editorPanel($: any, e: any): Promise<any> {
+  const elements = $.ui.resolve(e)
+  const { Box, Button, Text } = elements
+  const hasSvg = 'Svg' in elements
+  const muted = (text: string) => <Text dimColor>{text}</Text>
+  const header = (label: string, extra?: any) => (
+    <Box flexDirection="row" alignItems="center" width="100%">
+      {muted(label)}
+      <Box flexGrow={1} />
+      {extra ?? null}
+    </Box>
+  )
+  const menuRow = (key: string, label: string, iconPaths: string, note: string, variant?: 'accent') => (
+    <elements.Client key={key} module="./controls.tsx" width="100%" props={{ kind: 'row', label, icon: iconPaths, note, ...(variant ? { variant } : {}) }} />
+  )
+  const card = (...children: any[]) => (
+    <Box flexDirection="column" width={POPOVER_WIDTH} rowGap={1}>{children}</Box>
+  )
+
+  const demo = await read($, isDemo)
+  const shown = demo || (await read($, isShown))
+  const hasIde = demo || Boolean(await read($, ide))
+  const s: EditorSelection | null = demo
+    ? { ide: 'Cursor', filePath: '/demo/src/components/CheckoutForm.tsx', startLine: 12, endLine: 30, isEmpty: false, text: 'demo' }
+    : await read($, selection)
+  const switchRow = (
+    <elements.Client
+      key="editor-switch"
+      module="./controls.tsx"
+      width="100%"
+      props={{ kind: 'switch', label: 'Share with Claude', icon: CODE_ICON, isOn: shown }}
+    />
+  )
+  if (!shown) {
+    return card(switchRow, muted('Off. Turn on to send your Cursor or VS Code file and the lines you select with every message.'))
+  }
+  if (!isActive) void startBridge($)
+  if (!hasIde) {
+    const n = await read($, notice)
+    const message = !n ? 'Connecting to your editor\u2026'
+      : n.kind === 'no-node' ? `Editor context needs Node.js ${MIN_NODE_MAJOR} or later on this machine.`
+      : n.kind === 'disconnected' ? `Lost connection to ${n.ide ?? 'your editor'}. Reconnecting\u2026`
+      : 'Open VS Code or Cursor with the Claude Code extension installed.'
+    return card(
+      switchRow,
+      divider(elements, 'card-divider-waiting'),
+      <Box flexDirection="row" alignItems="center" columnGap={1}>
+        <Text color={WARN_COLOR}>{'\u25cb'}</Text>
+        <Text>{n?.kind === 'disconnected' ? 'Reconnecting' : 'Waiting for an editor'}</Text>
+      </Box>,
+      muted(message),
+    )
+  }
+
+  const dirty = demo || (await read($, isDirty))
+  const pinList: EditorSelection[] = demo
+    ? [
+        { ide: 'Cursor', filePath: '/demo/src/hooks/useCart.ts', startLine: 36, endLine: 48, isEmpty: false, text: 'demo' },
+        { ide: 'Cursor', filePath: '/demo/src/api/client.ts', startLine: 3, endLine: 13, isEmpty: false, text: 'demo' },
+      ]
+    : await read($, pins)
+  const files: string[] = demo ? DEMO_RECENT : await read($, recent)
+  const hasSelection = Boolean(s && !s.isEmpty && s.text)
+  const canPin = hasSelection && pinList.length < MAX_PINS && !pinList.some(p => s && pinKey(p) === pinKey(s))
+  const explaining = await read($, isExplaining)
+  const dotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="${DOT_COLOR}"/></svg>`
+  const chip = (key: string, label: string) => (
+    <Box key={key} borderStyle="round" borderColor="#FFFFFF0F" backgroundColor="#FFFFFF0F" paddingX={0.75} paddingY={0}>
+      <Text dimColor>{label}</Text>
+    </Box>
+  )
+  const dirOf = (f: string) => f.split('/').slice(-2, -1)[0] ?? ''
+  const ext = (f: string) => (f.includes('.') ? `${f.split('.').pop()} file` : 'file')
+
+  return card(
+    switchRow,
+    muted(s ? `${s.ide} \u00b7 sent with each message` : 'Sent with each message'),
+    divider(elements, 'card-divider-file'),
+    <Box flexDirection="row" alignItems="center" columnGap={1} width="100%">
+      {hasSvg ? <elements.Svg source={dotSvg} alt="sharing" width={DOT_SIZE} height={DOT_SIZE} /> : null}
+      <Text bold wrap="truncate-middle">{s ? fileName(s.filePath) : 'No file focused'}</Text>
+      <Box flexGrow={1} />
+      {s ? chip('lines', s.isEmpty ? `L${s.startLine}` : rangeLabel(s)) : null}
+    </Box>,
+    s ? (
+      <Box flexDirection="column" width="100%">
+        <elements.Client
+          key="explain"
+          module="./controls.tsx"
+          width="100%"
+          props={{ kind: 'row', label: hasSelection ? 'Explain selection' : 'Explain file', icon: ICONS.explain, note: hasSelection ? `${lineCount(s)} lines` : ext(fileName(s.filePath)), isBusy: explaining }}
+        />
+        {canPin ? menuRow('pin', 'Pin selection', ICONS.pin, 'kept in every message') : null}
+        {dirty ? menuRow('save', 'Save file', ICONS.save, 'unsaved changes', 'accent') : null}
+      </Box>
+    ) : null,
+    pinList.length > 0 ? divider(elements, 'card-divider-pins') : null,
+    pinList.length > 0
+      ? header('Pinned', pinList.length > 1
+          ? <Button key="unpin-all" plain dimColor label="Unpin all" onPress={() => { if (!demo) void update($, pins, () => []) }} />
+          : null)
+      : null,
+    pinList.length > 0 ? (
+      <Box flexDirection="column" width="100%">
+        {pinList.map(pin => (
+          <Box key={`pin:${pinKey(pin)}`} flexDirection="row" alignItems="center" columnGap={0.5} width="100%">
+            <Box width={0} flexGrow={1}>
+              {menuRow(`open-pin:${pinKey(pin)}`, fileName(pin.filePath), ICONS.pin, rangeLabel(pin))}
+            </Box>
+            <elements.Client key={`unpin:${pinKey(pin)}`} module="./controls.tsx" props={{ kind: 'button', label: '', icon: ICONS.close, variant: 'ghost' }} />
+          </Box>
+        ))}
+      </Box>
+    ) : null,
+    files.length > 0 ? divider(elements, 'card-divider-recent') : null,
+    files.length > 0 ? header('Open a recent file') : null,
+    files.length > 0 ? (
+      <Box flexDirection="column" width="100%">
+        {files.map(f => menuRow(`recent:${f}`, fileName(f), FILE_ICON, dirOf(f)))}
+      </Box>
+    ) : null,
+  )
+}
+
+// A hairline across the card.
+function divider(elements: any, key: string) {
+  const { Box } = elements
+  return 'Svg' in elements ? <Box key={key} width="100%"><elements.Svg source={DIVIDER_SVG} alt="divider" height={0.5} /></Box> : null
 }

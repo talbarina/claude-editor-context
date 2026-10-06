@@ -4,9 +4,9 @@
 
 **Claude always knows what you're looking at in your editor.**
 
-A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection above the prompt, and quietly sends it to Claude with every message.
+A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection in a tab above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.5.1-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.6.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
@@ -22,32 +22,32 @@ With this mod, you just select the code and ask: "why does this fail?" or "expla
 
 ## Features
 
+🗂️ **A tab above the prompt**<br>
+The **Editor** tab shows the file you're in and its line range. Hover it for a card with everything else. Click the tab to turn sharing on or off. If other mods add tabs to the same row, they line up beside it.
+
 👀 **Live file and selection**<br>
-The band shows the file, the line range and how many lines are selected. It updates as you click around.
+The tab follows your editor as you click around: the file, the selected lines, and a clay dot while it's sharing.
 
 💬 **Sent with every message**<br>
-Claude gets the file path and the selected code. It stays out of your chat.
+Claude gets the file path and the selected code. It stays out of your chat; a small "Sent with" chip above your message shows what went with it.
 
 💡 **Explain**<br>
-One click asks Claude to explain the selection, or the whole file. The button stays busy until Claude has answered, so a double click doesn't ask twice.
+One click in the card asks Claude to explain the selection, or the whole file. It stays busy until Claude has answered, so a double click doesn't ask twice.
 
 📌 **Pin**<br>
-Pin as many selections as you like, from any files. They're attached to every message until you unpin them.
+Pin up to 10 selections, from any files. They're attached to every message until you unpin them. Click a pin to jump back to its lines in your editor.
 
 💾 **Unsaved warning**<br>
 Tells you (and Claude) when the file has unsaved changes, with a Save button.
 
 🕘 **Recent files**<br>
-Your last five files, one click to reopen. Hidden until you press Recent.
-
-⏸️ **Pause**<br>
-Stop sharing until you press Resume.
+Your last five files, one click to reopen. They're only listed in the card, never sent to Claude.
 
 🔌 **Connection notices**<br>
 Says when no editor is open or the connection drops.
 
-🎛️ **Proper buttons**<br>
-The band's buttons are drawn by the mod itself, with the icon inside and hover and pressed states, styled after the app.
+🎛️ **Proper controls**<br>
+The tab, menu rows and switch are drawn by the mod itself, styled after the app's own popovers.
 
 ## Quick start
 
@@ -66,9 +66,9 @@ code --install-extension anthropic.claude-code     # VS Code
 /plugin install editor-context@talbarina
 ```
 
-**3. Start a session** in the desktop app, in the same folder you have open in your editor. Send your first message and the band appears.
+**3. Start a session** in the desktop app, in the same folder you have open in your editor, and click the **Editor** tab above the prompt to turn it on.
 
-To preview every part of the band with sample data, run `/editor-context-demo`.
+To preview every part of the tab and its card with sample data, run `/editor-context-demo`.
 
 ## Requirements
 
@@ -79,7 +79,8 @@ To preview every part of the band with sample data, run `/editor-context-demo`.
 
 ## Good to know
 
-- **No band on the new-session screen.** That screen comes before the session exists, so no mod can draw there. The band appears once the session starts, and your first message still includes your editor context.
+- **Off at the start of every session.** Click the **Editor** tab to turn it on. The new-session screen comes before the session exists, so no mod can draw there; the tab appears once the session starts.
+- **The card opens on hover.** Mods can only float a card on hover, not on click; the click on the tab is the on/off switch.
 - **Desktop app only.** In terminal sessions the mod stays off, because `/ide` already does this there.
 - **One editor connection.** Your editor accepts one connection at a time. All your desktop sessions share it, but a terminal session using `/ide` on the same editor will take turns with them.
 - **Long selections are cut** at 20,000 characters.
@@ -98,13 +99,14 @@ If the selection hasn't changed since your last message, Claude gets a one-line 
 
 ## 🔒 Privacy
 
-Everything stays on your machine. The mod reads your editor through the Claude Code extension's local connection and adds it only to messages you send. Press **Pause** whenever you want Claude not to see what's open.
+Everything stays on your machine. The mod is off when a session starts: until you turn it on, it doesn't connect to your editor or send anything. Once on, it reads your editor through the Claude Code extension's local connection and adds it only to messages you send. Turn it off (click the tab, or the switch in its card) whenever you want Claude not to see what's open: it then sends nothing, and keeps the connection so turning it back on is instant.
 
 ## Troubleshooting
 
 <details>
-<summary><b>The band doesn't appear</b></summary>
+<summary><b>The tab says "off" or nothing is sent</b></summary>
 
+- Click the **Editor** tab. It's off until you do.
 - Check that the editor is open and the extension is installed: `ls ~/.claude/ide` should list a `.lock` file.
 - Run `/plugin` and check that `editor-context` is listed as active.
 - Make sure you're in the desktop app, not the terminal.
@@ -137,7 +139,9 @@ The Claude Code extension runs a small local server in your editor and records i
 
 The editor accepts one client at a time, so the first session's helper holds the connection and the other sessions listen to it over a local socket. When that session closes, another takes over.
 
-Each button in the band is a small custom control (`hooks/controls.tsx`) that the app runs on its own. A click posts a press back to the mod, which runs that button's action.
+The tab sits in a row above the prompt that mods share: each tab's key carries its place in the row, so the order is the same whichever mod loads first. Its card is a hidden box the app shows as a popover while you hover the tab.
+
+The tab, the card's rows and its switch are small custom controls (`hooks/controls.tsx`) that the app runs on its own. A click posts a press back to the mod, which runs that control's action. The "Sent with" chips are drawn by `hooks/chips.tsx`.
 
 To see exactly which events the mod handles and what it calls before you install it:
 
@@ -156,7 +160,7 @@ claude plugin uninstall editor-context@talbarina    # remove
 
 ## Credits
 
-Band icons by [Tabler Icons](https://tabler.io/icons) (MIT).
+Icons by [Tabler Icons](https://tabler.io/icons) (MIT).
 
 ## License
 

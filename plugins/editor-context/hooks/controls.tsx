@@ -1,5 +1,9 @@
 // One custom control, drawn by the desktop app: a button with its icon inside,
-// a checkbox chip, or a count badge (a clay circle and a label) that opens a list. Each control is its own Client, so a click anywhere in it
+// a checkbox chip, a count badge (a clay circle and a label) that opens a list,
+// a launcher tab (clay while on), or a menu row for a popover: icon, label and a
+// quiet hint at the right end, filling the width, lit on hover; or a switch row: icon,
+// label, hint and an on/off switch at the right end; or the launcher pet, a picture that
+// shows its petted mood while the pointer is on it and is never pressed. Each control is its own Client, so a click anywhere in it
 // is a press of it: no hit-testing. The module posts { press: true } and the
 // hooks module (register.tsx, `ui.message`) runs the action by the Client's key.
 //
@@ -12,17 +16,27 @@
 type Variant = 'neutral' | 'accent' | 'ghost'
 
 type ControlProps = {
-  kind: 'button' | 'check' | 'badge'
+  kind: 'button' | 'check' | 'badge' | 'tab' | 'row' | 'switch' | 'pet'
   label: string
   /** A badge's number, drawn in its circle. */
   count?: number
   /** Tabler path markup for the icon; drawn in the state's color. */
   icon?: string
+  /** A whole SVG drawn in the icon's place, for a tab whose icon shows a value (a context ring). */
+  iconSvg?: string
   variant?: Variant
-  /** A checkbox's state; for a badge, whether its list is open. */
+  /** A button or checkbox that fills its region, its content centered. */
+  isFull?: boolean
+  /** A tab's status beside its label, or a row's hint at its right end, drawn quieter. */
+  note?: string
+  /** A tab's small status dot, in this color. */
+  dot?: string
+  /** A checkbox's state; for a badge, whether its list is open; for a tab, whether its pane is open. */
   isOn?: boolean
   /** Its message is still being worked on: drawn dim with a spinner, presses ignored. */
   isBusy?: boolean
+  /** The pet's picture now, the one while petted, and its size in px. */
+  pet?: { svg: string; petted: string; width: number; height: number }
 }
 
 type PointerState = { isHover: boolean; isDown: boolean }
@@ -91,10 +105,15 @@ const Control = (props: ControlProps, surface: any) => {
     } else if (ev.type === 'down' && ev.button === 'left' && !isBusy) {
       surface.setState({ isHover: true, isDown: true })
     } else if (ev.type === 'up') {
-      if (now.isDown && isInside && !isBusy) surface.post({ press: true })
+      if (now.isDown && isInside && !isBusy && props.kind !== 'pet') surface.post({ press: true })
       surface.setState({ isHover: isInside, isDown: false })
     }
   })
+
+  if (props.kind === 'pet' && props.pet) {
+    const { svg: now, petted, width, height } = props.pet
+    return Box({ flexDirection: 'row', children: [h('Svg', { source: state.isHover ? petted : now, alt: props.label || 'pet', width, height })] })
+  }
 
   if (props.kind === 'badge') {
     const n = props.count ?? 0
@@ -117,6 +136,77 @@ const Control = (props: ControlProps, surface: any) => {
     })
   }
 
+  if (props.kind === 'tab') {
+    const isOn = props.isOn === true
+    const bg = isOn ? (state.isDown ? '#36292499' : state.isHover ? '#4A3630' : '#3E2F2A') : state.isDown ? '#2C2C2C' : state.isHover ? '#2A2A2A' : '#212121'
+    return Box({
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: 1,
+      paddingX: 1.25,
+      paddingY: 0.2,
+      flexShrink: 0,
+      borderStyle: 'round',
+      borderColor: isOn ? '#74483A' : '#383838',
+      backgroundColor: bg,
+      children: [
+        ...(props.iconSvg
+          ? [h('Svg', { source: props.iconSvg, alt: props.label, width: ICON_PX, height: ICON_PX })]
+          : props.icon ? [svg(iconSource(props.icon, isOn ? ACCENT : state.isHover ? TEXT : MUTED), props.label)] : []),
+        Text({ color: isOn ? ACCENT_TEXT : TEXT, wrap: 'wrap', children: props.label }),
+        ...(props.dot ? [h('Svg', { source: `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="${props.dot}"/></svg>`, alt: 'status', width: 7, height: 7 })] : []),
+        ...(props.note ? [Text({ color: isOn ? ACCENT_TEXT : MUTED, dimColor: isOn, wrap: 'wrap', children: props.note })] : []),
+      ],
+    })
+  }
+
+  if (props.kind === 'switch') {
+    const isOn = props.isOn === true
+    const bg = state.isDown ? '#262626' : state.isHover ? '#2A2A2A' : '#1F1F1F'
+    const track = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="18" viewBox="0 0 30 18"><rect width="30" height="18" rx="9" fill="${isOn ? ACCENT : '#4A4A4A'}"/><circle cx="${isOn ? 21 : 9}" cy="9" r="7" fill="${isOn ? ACCENT_INK : '#BDBDBD'}"/></svg>`
+    return Box({
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: 1,
+      paddingX: 1,
+      paddingY: 0.2,
+      borderStyle: 'round',
+      borderColor: bg,
+      backgroundColor: bg,
+      children: [
+        ...(props.icon ? [svg(iconSource(props.icon, isOn ? ACCENT : state.isHover ? TEXT : MUTED), props.label)] : []),
+        Text({ color: isOn ? ACCENT_TEXT : TEXT, bold: props.variant === 'accent', children: props.label }),
+        ...(props.note ? [Text({ color: MUTED, wrap: 'truncate-end', children: props.note })] : []),
+        Box({ flexGrow: 1 }),
+        h('Svg', { source: track, alt: isOn ? 'on' : 'off', width: 30, height: 18 }),
+      ],
+    })
+  }
+
+  if (props.kind === 'row') {
+    const isAccent = props.variant === 'accent'
+    // The popover card's own fill, so a row at rest sits flat on it.
+    const bg = state.isDown ? '#262626' : state.isHover ? '#2A2A2A' : '#1F1F1F'
+    const paths = isBusy ? LOADER : props.icon
+    const iconColor = isBusy ? FAINT : isAccent ? ACCENT : state.isHover ? TEXT : MUTED
+    return Box({
+      flexDirection: 'row',
+      alignItems: 'center',
+      columnGap: 1,
+      paddingX: 1,
+      paddingY: 0.2,
+      borderStyle: 'round',
+      borderColor: bg,
+      backgroundColor: bg,
+      children: [
+        ...(paths ? [svg(iconSource(paths, iconColor), isBusy ? 'working' : props.label)] : []),
+        Text({ color: isBusy ? FAINT : isAccent ? ACCENT_TEXT : TEXT, children: isBusy ? `${props.label}…` : props.label }),
+        Box({ flexGrow: 1 }),
+        ...(props.note ? [Text({ color: MUTED, wrap: 'truncate-end', children: props.note })] : []),
+      ],
+    })
+  }
+
   if (props.kind === 'check') {
     const isOn = props.isOn === true
     const bg = isOn ? (state.isDown ? '#36292499' : '#3E2F2A') : state.isHover ? '#2A2A2A' : '#212121'
@@ -124,6 +214,7 @@ const Control = (props: ControlProps, surface: any) => {
     return Box({
       flexDirection: 'row',
       alignItems: 'center',
+      ...(props.isFull ? { justifyContent: 'center' } : {}),
       columnGap: 1,
       paddingX: 1.25,
       paddingY: 0.2,
@@ -146,15 +237,16 @@ const Control = (props: ControlProps, surface: any) => {
   return Box({
     flexDirection: 'row',
     alignItems: 'center',
+    ...(props.isFull ? { justifyContent: 'center' } : {}),
     columnGap: 1,
-    paddingX: paths ? 1.25 : 1.5,
+    paddingX: !props.label ? 0.75 : paths ? 1.25 : 1.5,
     paddingY: 0.2,
     borderStyle: 'round',
     borderColor: isBusy ? '#2A2A2A' : fill.edge,
     backgroundColor: bg,
     children: [
-      ...(paths ? [svg(iconSource(paths, iconColor), isBusy ? 'working' : props.label)] : []),
-      Text({ color: textColor, bold: props.variant === 'accent', children: isBusy ? `${props.label}…` : props.label }),
+      ...(paths ? [svg(iconSource(paths, iconColor), isBusy ? 'working' : props.label || 'icon')] : []),
+      ...(props.label ? [Text({ color: textColor, bold: props.variant === 'accent', children: isBusy ? `${props.label}…` : props.label })] : []),
     ],
   })
 }
