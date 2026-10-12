@@ -379,6 +379,22 @@ const START_WAIT_MS = 4000
 // those are skipped and kept.
 const START_MARKER = /^((?:\s*<system-reminder>[\s\S]*?<\/system-reminder>)*\s*)\+\+(?:\s+|$)/
 
+// A message as its bubble shows it: the desktop draws what was typed, without
+// the app's notes and with the marker, so both are left out when matching.
+function asTyped(text: string) {
+  return text.replace(/^(?:\s*<system-reminder>[\s\S]*?<\/system-reminder>)*\s*/, '').replace(/^\+\+(?:\s+|$)/, '')
+}
+
+// A session the app started ahead of time learns it is on the desktop only
+// once it is claimed, which can come just after its first message.
+async function waitForDesktop($: any) {
+  for (let i = 0; i < 30; i++) {
+    if ((await $.session.surfaces()).some(isDesktop)) return true
+    await $.clock.sleep(100)
+  }
+  return false
+}
+
 // The mod runs in the desktop app only: the terminal CLI already gets the
 // editor's selection through /ide, and the editor accepts one client at a
 // time, so a second connection there would only compete with it.
@@ -646,7 +662,7 @@ export const register: Register = on => {
     if (marker && isTyped && (await $.session.turns()) === 0) {
       const typed = e.text.slice(marker[0].length)
       if (typed) e = { ...e, text: marker[1] + typed }
-      if (!(await read($, isShown)) && (await $.session.surfaces()).some(isDesktop)) {
+      if (!(await read($, isShown)) && (await waitForDesktop($))) {
         lastSent.clear()
         await update($, isPaused, () => false)
         await update($, isShown, () => true)
@@ -687,7 +703,7 @@ export const register: Register = on => {
       blocks.push(`Still pinned, unchanged since they were sent: ${unchanged.join('; ')}.`)
     }
     for (const pin of await read($, pins)) chips.push({ icon: 'pin', label: `${fileName(pin.filePath)} · ${rangeLabel(pin)}` })
-    await update($, attached, list => [...list, { text: e.text, chips }].slice(-MAX_ATTACHED))
+    await update($, attached, list => [...list, { text: asTyped(e.text), chips }].slice(-MAX_ATTACHED))
 
     // Recent files show in the popover only; they're not sent.
 
@@ -701,7 +717,8 @@ export const register: Register = on => {
     // The desktop marks every message row it draws as 'sdk'; the text finds what went with it.
     const kind = props.origin?.kind
     if (kind !== 'sdk' && kind !== 'composer' && kind !== 'bridge' && kind !== 'plugin') return next(e)
-    const sent = [...(await read($, attached))].reverse().find(a => a.text === props.text)
+    const shown = asTyped(props.text ?? '')
+    const sent = [...(await read($, attached))].reverse().find(a => a.text === shown)
     const elements = $.ui.resolve(e) as any
     if (!sent || !elements.Svg) return next(e)
     const mine: Chip[] = sent.chips.map((c, i) => ({ key: `0:editor-context:${i}`, icon: ICONS[c.icon], label: c.label }))
