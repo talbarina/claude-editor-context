@@ -374,8 +374,10 @@ let started: Promise<void> = Promise.resolve()
 const START_WAIT_MS = 4000
 
 // Typed at the start of a session's first message: sends it with the editor's
-// context and turns the mod on for the rest of the session.
-const START_MARKER = /^\s*\+\+(?:\s+|$)/
+// context and turns the mod on for the rest of the session. The app can put
+// notes of its own before the typed text (a session with no folder does), so
+// those are skipped and kept.
+const START_MARKER = /^((?:\s*<system-reminder>[\s\S]*?<\/system-reminder>)*\s*)\+\+(?:\s+|$)/
 
 // The mod runs in the desktop app only: the terminal CLI already gets the
 // editor's selection through /ide, and the editor accepts one client at a
@@ -642,7 +644,8 @@ export const register: Register = on => {
     // does: the new-session screen comes before any mod can draw a tab there.
     const marker = START_MARKER.exec(e.text)
     if (marker && isTyped && (await $.session.turns()) === 0) {
-      e = { ...e, text: e.text.slice(marker[0].length) || e.text }
+      const typed = e.text.slice(marker[0].length)
+      if (typed) e = { ...e, text: marker[1] + typed }
       if (!(await read($, isShown)) && (await $.session.surfaces()).some(isDesktop)) {
         lastSent.clear()
         await update($, isPaused, () => false)
