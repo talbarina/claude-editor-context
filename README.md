@@ -32,7 +32,7 @@ The tab follows your editor as you click around: the file, the selected lines, a
 Claude gets the file path and the selected code. It stays out of your chat; a small "Sent with" chip above your message shows what went with it.
 
 ⚡ **Start with `++`**<br>
-Begin a new session's first message with `++`, as in `++ why does this jump?`, and it goes with your selection, then sharing stays on. The new-session screen has no tab yet, so this is how you turn it on from there. Claude doesn't see the `++`.
+Begin a new session's first message with `++`, as in `++ why does this jump?`, and it goes with your selection, then sharing stays on. The new-session screen has no tab yet, so this is how you turn it on from there. Claude doesn't see the `++`, though your message bubble still shows it. Works in sessions opened in a project folder, not in "No folder" sessions (see Good to know).
 
 💡 **Explain**<br>
 One click in the card asks Claude to explain the selection, or the whole file. It stays busy until Claude has answered, so a double click doesn't ask twice.
@@ -84,6 +84,7 @@ To preview every part of the tab and its card with sample data, run `/editor-con
 
 - **Off at the start of every session.** Click the **Editor** tab to turn it on, or start the first message with `++`. The new-session screen comes before the session exists, so no mod can draw there; the tab appears once the session starts.
 - **The card opens on hover.** Mods can only float a card on hover, not on click; the click on the tab is the on/off switch.
+- **`++` needs a project folder.** In a "No folder" session the app starts the session ahead of time, and `++` doesn't turn sharing on there. Click the **Editor** tab instead.
 - **Desktop app only.** In terminal sessions the mod stays off, because `/ide` already does this there.
 - **One editor connection.** Your editor accepts one connection at a time. All your desktop sessions share it, but a terminal session using `/ide` on the same editor will take turns with them.
 - **Long selections are cut** at 20,000 characters.
