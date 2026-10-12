@@ -373,6 +373,10 @@ let settleStart: () => void = () => {}
 let started: Promise<void> = Promise.resolve()
 const START_WAIT_MS = 4000
 
+// Typed at the start of a session's first message: sends it with the editor's
+// context and turns the mod on for the rest of the session.
+const START_MARKER = /^\s*\+\+(?:\s+|$)/
+
 // The mod runs in the desktop app only: the terminal CLI already gets the
 // editor's selection through /ide, and the editor accepts one client at a
 // time, so a second connection there would only compete with it.
@@ -632,14 +636,25 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    const origin = e.origin as { kind: string; name?: string }
+    const isTyped = origin.kind === 'composer' || origin.kind === 'bridge'
+    // "++" at the start of a session's first message turns it on, as the tab
+    // does: the new-session screen comes before any mod can draw a tab there.
+    const marker = START_MARKER.exec(e.text)
+    if (marker && isTyped && (await $.session.turns()) === 0) {
+      e = { ...e, text: e.text.slice(marker[0].length) || e.text }
+      if (!(await read($, isShown)) && (await $.session.surfaces()).some(isDesktop)) {
+        lastSent.clear()
+        await update($, isPaused, () => false)
+        await update($, isShown, () => true)
+      }
+    }
     if (!(await read($, isShown))) return next(e)
     if (!isActive && (await $.session.surfaces()).some(isDesktop)) void startBridge($)
     if (!isActive) return next(e)
     if (isStarting) await Promise.race([started, $.clock.sleep(START_WAIT_MS)])
     const s = await read($, selection)
-    const origin = e.origin as { kind: string; name?: string }
-    const isUser = origin.kind === 'composer' || origin.kind === 'bridge' ||
-      (origin.kind === 'plugin' && origin.name === 'editor-context')
+    const isUser = isTyped || (origin.kind === 'plugin' && origin.name === 'editor-context')
     if (!s || !isUser || (await read($, isPaused))) return next(e)
 
     const blocks: string[] = []

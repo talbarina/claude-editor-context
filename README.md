@@ -6,7 +6,7 @@
 
 A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection in a tab above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.6.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.7.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
@@ -30,6 +30,9 @@ The tab follows your editor as you click around: the file, the selected lines, a
 
 💬 **Sent with every message**<br>
 Claude gets the file path and the selected code. It stays out of your chat; a small "Sent with" chip above your message shows what went with it.
+
+⚡ **Start with `++`**<br>
+Begin a new session's first message with `++`, as in `++ why does this jump?`, and it goes with your selection, then sharing stays on. The new-session screen has no tab yet, so this is how you turn it on from there. Claude doesn't see the `++`.
 
 💡 **Explain**<br>
 One click in the card asks Claude to explain the selection, or the whole file. It stays busy until Claude has answered, so a double click doesn't ask twice.
@@ -79,7 +82,7 @@ To preview every part of the tab and its card with sample data, run `/editor-con
 
 ## Good to know
 
-- **Off at the start of every session.** Click the **Editor** tab to turn it on. The new-session screen comes before the session exists, so no mod can draw there; the tab appears once the session starts.
+- **Off at the start of every session.** Click the **Editor** tab to turn it on, or start the first message with `++`. The new-session screen comes before the session exists, so no mod can draw there; the tab appears once the session starts.
 - **The card opens on hover.** Mods can only float a card on hover, not on click; the click on the tab is the on/off switch.
 - **Desktop app only.** In terminal sessions the mod stays off, because `/ide` already does this there.
 - **One editor connection.** Your editor accepts one connection at a time. All your desktop sessions share it, but a terminal session using `/ide` on the same editor will take turns with them.
@@ -106,7 +109,7 @@ Everything stays on your machine. The mod is off when a session starts: until yo
 <details>
 <summary><b>The tab says "off" or nothing is sent</b></summary>
 
-- Click the **Editor** tab. It's off until you do.
+- Click the **Editor** tab, or start the session's first message with `++`. It's off until you do.
 - Check that the editor is open and the extension is installed: `ls ~/.claude/ide` should list a `.lock` file.
 - Run `/plugin` and check that `editor-context` is listed as active.
 - Make sure you're in the desktop app, not the terminal.
