@@ -6,13 +6,11 @@
 
 A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection in a tab above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.7.2-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.8.0-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
 </div>
-
-<p align="center"><img src="assets/demo.gif" alt="editor-context: pin selections from several files, ask Claude about them, reopen recent files" width="800"></p>
 
 ## Why
 
@@ -34,23 +32,17 @@ Claude gets the file path and the selected code. It stays out of your chat; a sm
 ⚡ **Start with `++`**<br>
 Begin a new session's first message with `++`, as in `++ why does this jump?`, and it goes with your selection, then sharing stays on. The new-session screen has no tab yet, so this is how you turn it on from there. Claude doesn't see the `++`, though your message bubble still shows it. Works in sessions opened in a project folder, not in "No folder" sessions (see Good to know).
 
-💡 **Explain**<br>
-One click in the card asks Claude to explain the selection, or the whole file. It stays busy until Claude has answered, so a double click doesn't ask twice.
-
 📌 **Pin**<br>
 Pin up to 10 selections, from any files. They're attached to every message until you unpin them. Click a pin to jump back to its lines in your editor.
 
 💾 **Unsaved warning**<br>
 Tells you (and Claude) when the file has unsaved changes, with a Save button.
 
-🕘 **Recent files**<br>
-Your last five files, one click to reopen. They're only listed in the card, never sent to Claude.
-
 🔌 **Connection notices**<br>
 Says when no editor is open or the connection drops.
 
 🎛️ **Proper controls**<br>
-The tab, menu rows and switch are drawn by the mod itself, styled after the app's own popovers.
+The card's buttons are the app's own. The tab and the switch are drawn by the mod itself, styled after the app's own popovers.
 
 ## Quick start
 
@@ -145,13 +137,14 @@ The editor accepts one client at a time, so the first session's helper holds the
 
 The tab sits in a row above the prompt that mods share: each tab's key carries its place in the row, so the order is the same whichever mod loads first. Its card is a hidden box the app shows as a popover while you hover the tab.
 
-The tab, the card's rows and its switch are small custom controls (`hooks/controls.tsx`) that the app runs on its own. A click posts a press back to the mod, which runs that control's action. The "Sent with" chips are drawn by `hooks/chips.tsx`.
+The tab and the card's switch are small custom controls (`hooks/controls.tsx`) that the app runs on its own. A click posts a press back to the mod, which runs that control's action. The card's other buttons are the app's own. The "Sent with" chips are drawn by `hooks/chips.tsx`.
 
 To see exactly which events the mod handles and what it calls before you install it:
 
 ```bash
 git clone https://github.com/talbarina/claude-editor-context
 claude plugin validate claude-editor-context/plugins/editor-context
+claude plugin test claude-editor-context/plugins/editor-context
 ```
 </details>
 

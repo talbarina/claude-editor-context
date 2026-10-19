@@ -9,38 +9,31 @@ const ide = atom({ plugin: 'editor-context', key: 'ide' } as const, null)
 const isPaused = atom({ plugin: 'editor-context', key: 'isPaused' } as const, false)
 const isDirty = atom({ plugin: 'editor-context', key: 'isDirty' } as const, false)
 const pins = atom({ plugin: 'editor-context', key: 'pins' } as const, [])
-const recent = atom({ plugin: 'editor-context', key: 'recent' } as const, [])
-const isRecentHidden = atom({ plugin: 'editor-context', key: 'isRecentHidden' } as const, true)
 const isDemo = atom({ plugin: 'editor-context', key: 'isDemo' } as const, false)
 const notice = atom({ plugin: 'editor-context', key: 'notice' } as const, null)
 const isNoticeHidden = atom({ plugin: 'editor-context', key: 'isNoticeHidden' } as const, false)
-const isExplaining = atom({ plugin: 'editor-context', key: 'isExplaining' } as const, false)
 // Sharing is off until the Editor tab (or the switch in its card) turns it on: off, it sends nothing.
 const isShown = atom({ plugin: 'editor-context', key: 'isShown' } as const, false)
 const attached = atom({ plugin: 'editor-context', key: 'attached' } as const, [])
 const MAX_ATTACHED = 30
 
 const MAX_TEXT = 20000
-const MAX_RECENT = 5
 const MAX_PINS = 10
 const DOT_COLOR = '#D97757'
 const WARN_COLOR = '#E5A50A'
 const DOT_SIZE = 9
 const ICON_SIZE = 14
 const ICON_COLOR = '#8A8A8A'
-const BUSY_ICON_COLOR = '#5C5C5C'
 const DIVIDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1" viewBox="0 0 4000 1" preserveAspectRatio="none"><rect width="4000" height="1" fill="#8A8A8A" fill-opacity="0.2"/></svg>'
 
 // Tabler outline icons (tabler.io/icons, MIT), the set the desktop app ships.
 const ICONS: Record<string, string> = {
   save: '<path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M10 14a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M14 4l0 4l-6 0l0 -4"/>',
-  explain: '<path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7"/><path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3"/><path d="M9.7 17l4.6 0"/>',
   pin: '<path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/>',
   unpin: '<path d="M3 3l18 18"/><path d="M15 4.5l-3.249 3.249m-2.57 1.433l-2.181 .818l-1.5 1.5l7 7l1.5 -1.5l.82 -2.186m1.43 -2.563l3.25 -3.251"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/>',
   file: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>',
   pause: '<path d="M6 6a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/><path d="M14 6a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>',
   resume: '<path d="M7 4v16l13 -8z"/>',
-  recent: '<path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/>',
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
 }
 
@@ -48,13 +41,6 @@ const ICONS: Record<string, string> = {
 function iconSvg(name: string, color: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`
 }
-
-// Sample rows for /editor-context-demo, so every part of the band can be seen.
-const DEMO_RECENT = [
-  '/demo/src/components/Header.tsx',
-  '/demo/src/api/client.ts',
-  '/demo/src/pages/Settings.tsx',
-]
 
 // Runs under node. Connects to the Claude Code extension's MCP websocket in
 // Cursor / VS Code (found through ~/.claude/ide/<port>.lock), prints one JSON
@@ -428,8 +414,6 @@ async function handleLine($: any, msg: any) {
     const prev = await read($, selection)
     if (prev && prev.filePath !== incoming.filePath) {
       await update($, isDirty, () => false)
-      await update($, recent, list =>
-        [prev.filePath, ...list.filter(f => f !== prev.filePath && f !== incoming.filePath)].slice(0, MAX_RECENT))
     }
     await update($, selection, () => incoming)
     settleStart()
@@ -468,28 +452,6 @@ async function startBridge($: any) {
   }
 }
 
-// Explain stays busy until the turn its message started has completed.
-// `isNext`: nothing was running at the press, so the next turn is this one.
-const turnState = { isRunning: false }
-const explainTurn: { text: string; turnId: string | null; isNext: boolean } = { text: '', turnId: null, isNext: false }
-
-async function sendExplain($: any, text: string) {
-  if (await read($, isExplaining)) return
-  await update($, isExplaining, () => true)
-  explainTurn.text = text
-  explainTurn.turnId = null
-  explainTurn.isNext = !turnState.isRunning
-  const result = await $.prompt.submit({ text, asUser: true })
-  if (result.drop) await endExplain($)
-}
-
-async function endExplain($: any) {
-  explainTurn.text = ''
-  explainTurn.turnId = null
-  explainTurn.isNext = false
-  await update($, isExplaining, () => false)
-}
-
 // What each context block last sent, so an unchanged selection is not resent.
 const lastSent = new Map<string, string>()
 
@@ -500,8 +462,8 @@ function isFresh(key: string, value: string) {
 }
 
 // ---- Band actions ----
-// Native buttons call runAction from onPress; the desktop's custom controls post a
-// press that the `ui.message` hook turns into the same call, by the Client's key.
+// The app's Buttons call runAction from onPress; the desktop's drawn tab and switch post
+// a press that the `ui.message` hook turns into the same call, by the Client's key.
 
 // Presses whose action has not finished yet: a second press of the same button is ignored.
 const inFlight = new Set<string>()
@@ -541,12 +503,6 @@ async function actionOf($: any, key: string) {
     case 'pause':
       await update($, isPaused, v => !v)
       return
-    case 'show-recent':
-      await update($, isRecentHidden, () => false)
-      return
-    case 'close-recent':
-      if (!demo) await update($, isRecentHidden, () => true)
-      return
     case 'save':
       if (!demo && s) await ideCall($, 'saveDocument', { filePath: s.filePath })
       return
@@ -556,15 +512,6 @@ async function actionOf($: any, key: string) {
         await update($, pins, list => (list.length >= MAX_PINS || list.some(p => pinKey(p) === pinKey(pin)) ? list : [...list, pin]))
       }
       return
-    case 'explain': {
-      if (demo || !s) return
-      lastSent.delete('selection')
-      const text = !s.isEmpty && s.text
-        ? `Explain ${rangeLabel(s)} of \`${fileName(s.filePath)}\`.`
-        : `Explain \`${fileName(s.filePath)}\`.`
-      await sendExplain($, text)
-      return
-    }
   }
   if (key.startsWith('open-pin:') && !demo) {
     const target = key.slice('open-pin:'.length)
@@ -573,10 +520,6 @@ async function actionOf($: any, key: string) {
       const lines = pin.text.split('\n').filter(l => l.trim() !== '')
       await ideCall($, 'openFile', { filePath: pin.filePath, startText: lines[0] ?? '', endText: lines[lines.length - 1] ?? '', makeFrontmost: true })
     }
-    return
-  }
-  if (key.startsWith('recent:') && !demo) {
-    await ideCall($, 'openFile', { filePath: key.slice('recent:'.length), startText: '', endText: '', makeFrontmost: true })
     return
   }
   if (key.startsWith('unpin:') && !demo) {
@@ -636,7 +579,6 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
-    await endExplain($)
     await $.command.register({
       name: 'editor-context-demo',
       description: 'Toggle sample data in the editor band to preview every row',
@@ -705,8 +647,6 @@ export const register: Register = on => {
     for (const pin of await read($, pins)) chips.push({ icon: 'pin', label: `${fileName(pin.filePath)} · ${rangeLabel(pin)}` })
     await update($, attached, list => [...list, { text: asTyped(e.text), chips }].slice(-MAX_ATTACHED))
 
-    // Recent files show in the popover only; they're not sent.
-
     return next({ ...e, context: [...(e.context ?? []), ...blocks] })
   })
 
@@ -721,27 +661,8 @@ export const register: Register = on => {
     const sent = [...(await read($, attached))].reverse().find(a => a.text === shown)
     const elements = $.ui.resolve(e) as any
     if (!sent || !elements.Svg) return next(e)
-    const mine: Chip[] = sent.chips.map((c, i) => ({ key: `0:editor-context:${i}`, icon: ICONS[c.icon], label: c.label }))
+    const mine: Chip[] = sent.chips.map((c, i) => ({ key: `0:editor-context:${i}`, icon: ICONS[c.icon] ?? '', label: c.label }))
     return sentWith(elements, await next(e), mine)
-  })
-
-  on('turn.start', async ($, e, next) => {
-    const started = await next(e)
-    turnState.isRunning = true
-    // Queued messages can enter as one turn, so the text may be anywhere in it.
-    if (explainTurn.text && explainTurn.turnId === null && (explainTurn.isNext || e.text.includes(explainTurn.text))) {
-      explainTurn.turnId = e.turnId
-    }
-    explainTurn.isNext = false
-    return started
-  })
-
-  on('turn.complete', async ($, e, next) => {
-    const done = await next(e)
-    if (e.agentId) return done
-    turnState.isRunning = false
-    if (explainTurn.turnId !== null && e.turnId === explainTurn.turnId) await endExplain($)
-    return done
   })
 
   // A custom control (controls.tsx) posts { press: true }; its Client's key names the button.
@@ -810,7 +731,7 @@ export const register: Register = on => {
 
 // The full panel, in the launcher tab's floating card, using its full width (POPOVER_WIDTH),
 // built like the app's own popovers: a "Share with Claude" switch on top, then the file,
-// its actions as menu rows, pins and recent files.
+// its actions as the app's own buttons, and the pins.
 async function editorPanel($: any, e: any): Promise<any> {
   const elements = $.ui.resolve(e)
   const { Box, Button, Text } = elements
@@ -823,9 +744,7 @@ async function editorPanel($: any, e: any): Promise<any> {
       {extra ?? null}
     </Box>
   )
-  const menuRow = (key: string, label: string, iconPaths: string, note: string, variant?: 'accent') => (
-    <elements.Client key={key} module="./controls.tsx" width="100%" props={{ kind: 'row', label, icon: iconPaths, note, ...(variant ? { variant } : {}) }} />
-  )
+  const icon = (paths: string) => (hasSvg ? <elements.Svg source={`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`} alt="pin" width={ICON_SIZE} height={ICON_SIZE} /> : null)
   const card = (...children: any[]) => (
     <Box flexDirection="column" width={POPOVER_WIDTH} rowGap={1}>{children}</Box>
   )
@@ -872,18 +791,14 @@ async function editorPanel($: any, e: any): Promise<any> {
         { ide: 'Cursor', filePath: '/demo/src/api/client.ts', startLine: 3, endLine: 13, isEmpty: false, text: 'demo' },
       ]
     : await read($, pins)
-  const files: string[] = demo ? DEMO_RECENT : await read($, recent)
   const hasSelection = Boolean(s && !s.isEmpty && s.text)
   const canPin = hasSelection && pinList.length < MAX_PINS && !pinList.some(p => s && pinKey(p) === pinKey(s))
-  const explaining = await read($, isExplaining)
   const dotSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="${DOT_COLOR}"/></svg>`
   const chip = (key: string, label: string) => (
     <Box key={key} borderStyle="round" borderColor="#FFFFFF0F" backgroundColor="#FFFFFF0F" paddingX={0.75} paddingY={0}>
       <Text dimColor>{label}</Text>
     </Box>
   )
-  const dirOf = (f: string) => f.split('/').slice(-2, -1)[0] ?? ''
-  const ext = (f: string) => (f.includes('.') ? `${f.split('.').pop()} file` : 'file')
 
   return card(
     switchRow,
@@ -895,16 +810,12 @@ async function editorPanel($: any, e: any): Promise<any> {
       <Box flexGrow={1} />
       {s ? chip('lines', s.isEmpty ? `L${s.startLine}` : rangeLabel(s)) : null}
     </Box>,
-    s ? (
-      <Box flexDirection="column" width="100%">
-        <elements.Client
-          key="explain"
-          module="./controls.tsx"
-          width="100%"
-          props={{ kind: 'row', label: hasSelection ? 'Explain selection' : 'Explain file', icon: ICONS.explain, note: hasSelection ? `${lineCount(s)} lines` : ext(fileName(s.filePath)), isBusy: explaining }}
-        />
-        {canPin ? menuRow('pin', 'Pin selection', ICONS.pin, 'kept in every message') : null}
-        {dirty ? menuRow('save', 'Save file', ICONS.save, 'unsaved changes', 'accent') : null}
+    s && (canPin || dirty) ? (
+      <Box flexDirection="row" alignItems="center" columnGap={1} width="100%">
+        {dirty ? <Text color={WARN_COLOR}>Unsaved changes</Text> : null}
+        <Box flexGrow={1} />
+        {canPin ? <Button key="pin" label="Pin selection" onPress={() => void runAction($, 'pin')} /> : null}
+        {dirty ? <Button key="save" label="Save file" onPress={() => void runAction($, 'save')} /> : null}
       </Box>
     ) : null,
     pinList.length > 0 ? divider(elements, 'card-divider-pins') : null,
@@ -914,22 +825,15 @@ async function editorPanel($: any, e: any): Promise<any> {
           : null)
       : null,
     pinList.length > 0 ? (
-      <Box flexDirection="column" width="100%">
+      <Box flexDirection="column" width="100%" rowGap={0.5}>
         {pinList.map(pin => (
-          <Box key={`pin:${pinKey(pin)}`} flexDirection="row" alignItems="center" columnGap={0.5} width="100%">
-            <Box width={0} flexGrow={1}>
-              {menuRow(`open-pin:${pinKey(pin)}`, fileName(pin.filePath), ICONS.pin, rangeLabel(pin))}
-            </Box>
-            <elements.Client key={`unpin:${pinKey(pin)}`} module="./controls.tsx" props={{ kind: 'button', label: '', icon: ICONS.close, variant: 'ghost' }} />
+          <Box key={`pin:${pinKey(pin)}`} flexDirection="row" alignItems="center" columnGap={1} width="100%">
+            {icon(ICONS.pin ?? '')}
+            <Button key={`open-pin:${pinKey(pin)}`} plain onPress={() => void runAction($, `open-pin:${pinKey(pin)}`)}>{fileName(pin.filePath)} <Text dimColor>{rangeLabel(pin)}</Text></Button>
+            <Box flexGrow={1} />
+            <Button key={`unpin:${pinKey(pin)}`} plain dimColor label={'\u2715'} onPress={() => void runAction($, `unpin:${pinKey(pin)}`)} />
           </Box>
         ))}
-      </Box>
-    ) : null,
-    files.length > 0 ? divider(elements, 'card-divider-recent') : null,
-    files.length > 0 ? header('Open a recent file') : null,
-    files.length > 0 ? (
-      <Box flexDirection="column" width="100%">
-        {files.map(f => menuRow(`recent:${f}`, fileName(f), FILE_ICON, dirOf(f)))}
       </Box>
     ) : null,
   )

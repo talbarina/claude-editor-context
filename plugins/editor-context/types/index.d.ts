@@ -18,13 +18,9 @@ declare module 'claude-code' {
       isPaused: boolean
       isDirty: boolean
       pins: EditorSelection[]
-      recent: string[]
-      isRecentHidden: boolean
       isDemo: boolean
       notice: { kind: string; ide?: string } | null
       isNoticeHidden: boolean
-      /** Explain's message is still being worked on: the button ignores presses until its turn completes. */
-      isExplaining: boolean
       /** Sharing is on (the Editor tab, or the switch in its card). Off, nothing is sent. */
       isShown: boolean
       /** The last messages that went out with editor context, newest last. */
