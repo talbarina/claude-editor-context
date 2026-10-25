@@ -533,9 +533,10 @@ async function actionOf($: any, key: string) {
 // panel opens in a pane. Each mod's band nests the bands of mods loaded after it, so
 // whichever draws outermost lays the tabs out in one order, then any other bands.
 const PANE = 'editor-context'
-// The floating card's content width, in ch: the app caps the card at 360px and pads it
-// about 12px a side, which leaves 336px; one ch of the app's 13px text is about 8.2px.
-const POPOVER_WIDTH = 41
+// The floating card's content fills the card. The app sizes the card to its content, caps
+// it at 360px and sets its padding and text size by its density, so a fixed width in ch
+// overflows (and gets cut) when the app uses its larger, comfortable size.
+const POPOVER_WIDTH = '100%'
 // A launcher tab's key carries its place in the row: "launch:<rank>:<name>".
 const launchRank = (key: string) => Number(key.match(/^launch:(\d+):/)?.[1] ?? 9)
 const POWER_ICON = '<path d="M7 6a7.75 7.75 0 1 0 10 0"/><path d="M12 4l0 8"/>'
