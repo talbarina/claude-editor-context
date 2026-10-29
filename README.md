@@ -6,7 +6,7 @@
 
 A mod for the Claude desktop app that shows your current Cursor or VS Code file and selection in a tab above the prompt, and quietly sends it to Claude with every message.
 
-[![Version](https://img.shields.io/badge/version-1.8.1-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.8.2-D97757)](plugins/editor-context/.claude-plugin/plugin.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8A8A8A)](LICENSE)
 [![Claude desktop app](https://img.shields.io/badge/Claude-desktop%20app-8A8A8A)](https://code.claude.com/docs/en/plugins/mods/overview)
 
@@ -92,6 +92,8 @@ selected in Cursor. "This", "here" or "these lines" likely refers to it:
 ```
 
 If the selection hasn't changed since your last message, Claude gets a one-line reminder instead of the code again.
+
+Select part of a row and only that part goes: the tab shows `L12:5–18`, and Claude reads "characters 5-18 of line 12". With nothing selected, Claude gets just the file path, with no line.
 
 ## 🔒 Privacy
 

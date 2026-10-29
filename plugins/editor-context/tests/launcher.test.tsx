@@ -16,7 +16,7 @@ test('the Editor tab turns it on and floats its panel on hover; tabs keep one or
   on('session.surfaces', () => ({ value: ['desktop'] }))
   on('process.spawn', async function* () {
     yield { stream: 'stdout', text: JSON.stringify({ type: 'status', ide: 'Cursor' }) + '\n' }
-    yield { stream: 'stdout', text: JSON.stringify({ type: 'selection', ide: 'Cursor', filePath: '/proj/a.dart', text: 'x', selection: { start: { line: 2 }, end: { line: 5, character: 1 }, isEmpty: false } }) + '\n' }
+    yield { stream: 'stdout', text: JSON.stringify({ type: 'selection', ide: 'Cursor', filePath: '/proj/a.dart', text: 'x', selection: { start: { line: 2 }, end: { line: 6, character: 0 }, isEmpty: false } }) + '\n' }
     return { value: { code: 0, signal: null } }
   } as any)
   on('process.run', () => ({ value: { exitCode: 0, stdout: 'v22.1.0\n', stderr: '' } }))

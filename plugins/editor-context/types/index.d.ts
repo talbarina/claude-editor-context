@@ -3,6 +3,9 @@ export type EditorSelection = {
   filePath: string
   startLine: number
   endLine: number
+  /** Set only when part of a row is selected: the first and last character, 1-based. */
+  startCol?: number
+  endCol?: number
   isEmpty: boolean
   text: string
 }

@@ -262,14 +262,21 @@ main()
 function toSelection(raw: any): EditorSelection {
   const start = raw.selection?.start?.line ?? 0
   let end = raw.selection?.end?.line ?? start
+  const startChar = raw.selection?.start?.character ?? 0
+  let endChar = raw.selection?.end?.character ?? 0
   // A whole-line selection ends at column 0 of the next line.
-  if (end > start && raw.selection?.end?.character === 0) end -= 1
+  if (end > start && endChar === 0) end -= 1
+  else if (endChar === 0) endChar = startChar
+  const isEmpty = Boolean(raw.selection?.isEmpty ?? !raw.text)
+  // Part of a row: keep the characters, 1-based and inclusive, as the editor counts them.
+  const isPartial = !isEmpty && (startChar > 0 || endChar > 0)
   return {
     ide: String(raw.ide ?? 'IDE'),
     filePath: String(raw.filePath),
     startLine: start + 1,
     endLine: end + 1,
-    isEmpty: Boolean(raw.selection?.isEmpty ?? !raw.text),
+    ...(isPartial ? { startCol: startChar + 1, endCol: Math.max(endChar, startChar + 1) } : {}),
+    isEmpty,
     text: String(raw.text ?? '').slice(0, MAX_TEXT),
   }
 }
@@ -282,12 +289,29 @@ function lineCount(s: EditorSelection) {
   return s.endLine - s.startLine + 1
 }
 
+function isPartial(s: EditorSelection) {
+  return s.startCol !== undefined && s.endCol !== undefined
+}
+
 function rangeLabel(s: EditorSelection) {
+  if (isPartial(s)) {
+    return s.startLine === s.endLine ? `L${s.startLine}:${s.startCol}–${s.endCol}` : `L${s.startLine}:${s.startCol}–L${s.endLine}:${s.endCol}`
+  }
   return s.startLine === s.endLine ? `L${s.startLine}` : `L${s.startLine}–${s.endLine}`
 }
 
+// The range in words, for what Claude reads.
+function rangeWords(s: EditorSelection) {
+  if (isPartial(s)) {
+    return s.startLine === s.endLine
+      ? `characters ${s.startCol}-${s.endCol} of line ${s.startLine}`
+      : `line ${s.startLine} character ${s.startCol} to line ${s.endLine} character ${s.endCol}`
+  }
+  return `lines ${s.startLine}-${s.endLine}`
+}
+
 function pinKey(p: EditorSelection) {
-  return `${p.filePath}|${p.startLine}|${p.endLine}`
+  return isPartial(p) ? `${p.filePath}|${p.startLine}:${p.startCol}|${p.endLine}:${p.endCol}` : `${p.filePath}|${p.startLine}|${p.endLine}`
 }
 
 function codeBlock(text: string) {
@@ -621,25 +645,25 @@ export const register: Register = on => {
 
     const blocks: string[] = []
 
-    let main = `The user is working in ${s.ide}. Active file: ${s.filePath}, cursor at line ${s.startLine}.`
+    let main = `The user is working in ${s.ide}. Active file: ${s.filePath}.`
     if (!s.isEmpty && s.text) {
-      main = isFresh('selection', `${s.filePath}|${s.startLine}|${s.endLine}|${s.text}`)
-        ? `The user has lines ${s.startLine}-${s.endLine} of ${s.filePath} selected in ${s.ide}. "This", "here" or "these lines" likely refers to it:\n${codeBlock(s.text)}`
-        : `The user still has lines ${s.startLine}-${s.endLine} of ${s.filePath} selected in ${s.ide} (same selection as their previous message).`
+      main = isFresh('selection', `${pinKey(s)}|${s.text}`)
+        ? `The user has ${rangeWords(s)} of ${s.filePath} selected in ${s.ide}. "This", "here" or "these lines" likely refers to it:\n${codeBlock(s.text)}`
+        : `The user still has ${rangeWords(s)} of ${s.filePath} selected in ${s.ide} (same selection as their previous message).`
     }
     if (await read($, isDirty)) {
       main += ' The file has unsaved changes in the editor, so the version on disk may differ from what the user sees.'
     }
     blocks.push(main)
-    const chips: Attached['chips'] = [{ icon: 'file', label: s.isEmpty ? `${fileName(s.filePath)} · L${s.startLine}` : `${fileName(s.filePath)} · ${rangeLabel(s)}` }]
+    const chips: Attached['chips'] = [{ icon: 'file', label: s.isEmpty ? fileName(s.filePath) : `${fileName(s.filePath)} · ${rangeLabel(s)}` }]
 
     // Each pin's code goes once; while unchanged, one line names them all.
     const unchanged: string[] = []
     for (const pin of await read($, pins)) {
       if (isFresh(`pin:${pinKey(pin)}`, pin.text)) {
-        blocks.push(`The user pinned lines ${pin.startLine}-${pin.endLine} of ${pin.filePath} as reference for this conversation:\n${codeBlock(pin.text)}`)
+        blocks.push(`The user pinned ${rangeWords(pin)} of ${pin.filePath} as reference for this conversation:\n${codeBlock(pin.text)}`)
       } else {
-        unchanged.push(`lines ${pin.startLine}-${pin.endLine} of ${pin.filePath}`)
+        unchanged.push(`${rangeWords(pin)} of ${pin.filePath}`)
       }
     }
     if (unchanged.length > 0) {
@@ -702,7 +726,7 @@ export const register: Register = on => {
     const name = s ? fileName(s.filePath) : ''
     const isFileTab = shown && hasIde && s !== null
     const tabLabel = isFileTab ? name : 'Editor'
-    const note = isFileTab ? (s!.isEmpty ? `L${s!.startLine}` : rangeLabel(s!)) : !shown ? 'off' : 'no editor'
+    const note = isFileTab ? (s!.isEmpty ? '' : rangeLabel(s!)) : !shown ? 'off' : 'no editor'
     // Hovering the tab floats the full panel above it: the desktop lifts a hidden Box
     // that hover reveals into a popover card (the app's own popover look, up to 360px wide).
     const panel = await editorPanel($, e)
@@ -711,7 +735,7 @@ export const register: Register = on => {
         <elements.Client
           key="launch-tab:editor-context"
           module="./controls.tsx"
-          props={{ kind: 'tab', label: tabLabel, icon: isFileTab ? FILE_ICON : CODE_ICON, isOn: isFileTab, note, ...(isFileTab ? { dot: DOT_COLOR } : {}) }}
+          props={{ kind: 'tab', label: tabLabel, icon: isFileTab ? FILE_ICON : CODE_ICON, isOn: isFileTab, ...(note ? { note } : {}), ...(isFileTab ? { dot: DOT_COLOR } : {}) }}
         />
         <Box position="absolute" top={-1} left={0} display="none" hover={{ display: 'flex' }} flexDirection="column">
           {panel}
@@ -809,7 +833,7 @@ async function editorPanel($: any, e: any): Promise<any> {
       {hasSvg ? <elements.Svg source={dotSvg} alt="sharing" width={DOT_SIZE} height={DOT_SIZE} /> : null}
       <Text bold wrap="truncate-middle">{s ? fileName(s.filePath) : 'No file focused'}</Text>
       <Box flexGrow={1} />
-      {s ? chip('lines', s.isEmpty ? `L${s.startLine}` : rangeLabel(s)) : null}
+      {s && !s.isEmpty ? chip('lines', rangeLabel(s)) : null}
     </Box>,
     s && (canPin || dirty) ? (
       <Box flexDirection="row" alignItems="center" columnGap={1} width="100%">
